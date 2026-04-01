@@ -846,15 +846,18 @@ function Toast({ toast }) {
 /* ─── Main App ───────────────────────────────────────────────────────── */
 /* ── AI URL extraction ──────────────────────────────────────────── */
 async function extractEventFromUrl(url) {
-  // Fetch page content via Jina reader (free, no API key, bypasses CORS)
-  const jinaRes = await fetch(`https://r.jina.ai/${encodeURIComponent(url)}`, {
-    headers: { 'Accept': 'text/plain' }
-  });
-  const pageText = await jinaRes.text();
-  const trimmed  = pageText.slice(0, 6000); // keep under token limit
-
   const apiKey = getOpenAiKey();
-  if (!apiKey) throw new Error('No API key');
+  if (!apiKey) throw new Error('NO_KEY');
+
+  // Fetch page content via Jina reader
+  let pageText = `URL: ${url}`;
+  try {
+    const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
+      headers: { 'Accept': 'text/plain', 'X-Return-Format': 'text' }
+    });
+    if (jinaRes.ok) pageText = (await jinaRes.text()).slice(0, 8000);
+  } catch {}
+
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -865,20 +868,28 @@ async function extractEventFromUrl(url) {
       model: 'gpt-4o-mini',
       messages: [{
         role: 'system',
-        content: `You extract event info from webpage text. Return ONLY valid JSON with these fields:
-title, date (YYYY-MM-DD or ""), time (HH:MM or ""), city, venue, address, description (1-2 sentences), price, eventUrl, tag (one of: Muzika/Menas/Festivalis/Sportas/Maistas/Kitas).
-If a field is unknown leave it as empty string "". Never add extra text outside JSON.`,
+        content: 'Extract event info and return ONLY a JSON object (no markdown, no extra text) with fields: title, date (YYYY-MM-DD), time (HH:MM), city, venue, address, description (max 2 sentences), price, eventUrl, tag (one of: Muzika/Menas/Festivalis/Sportas/Maistas/Kitas). Use empty string for unknown fields.',
       }, {
         role: 'user',
-        content: `Extract event info from this page:\n\nURL: ${url}\n\n${trimmed}`,
+        content: `Event page:\n${pageText}`,
       }],
-      temperature: 0.1,
+      temperature: 0,
     }),
   });
+
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error?.message || `OpenAI klaida ${res.status}`);
+  }
+
   const json = await res.json();
-  const text = json.choices?.[0]?.message?.content || '{}';
-  const clean = text.replace(/```json|```/g, '').trim();
-  return JSON.parse(clean);
+  const raw = (json.choices?.[0]?.message?.content || '{}').replace(/```json|```/g, '').trim();
+  try { return JSON.parse(raw); }
+  catch {
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (m) return JSON.parse(m[0]);
+    throw new Error('Nepavyko išskaityti AI atsakymo');
+  }
 }
 
 function AiUrlModal({ onClose, onExtracted }) {
@@ -895,7 +906,11 @@ function AiUrlModal({ onClose, onExtracted }) {
       const data = await extractEventFromUrl(url.trim());
       onExtracted({ ...data, eventUrl: data.eventUrl || url.trim(), _isNew: true, status:'published', featured:false });
     } catch(e) {
-      setError('Nepavyko nuskaityti. Patikrink nuorodą arba OpenAI raktą ir bandyk dar kartą.');
+      if (e.message === 'NO_KEY') {
+        setError('Įvesk OpenAI API raktą.');
+      } else {
+        setError(`Klaida: ${e.message}`);
+      }
     }
     setLoading(false);
   }
