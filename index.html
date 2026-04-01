@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Nunito:wght@900&display=swap" rel="stylesheet" />
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -322,15 +323,20 @@ function googleMapsUrl(addr) {
 }
 function uid() { return `id_${Date.now()}_${Math.random().toString(36).slice(2,7)}`; }
 
-/* ── Community Photos storage ───────────────────────────────────── */
-const PHOTOS_KEY = 'baPhotos';
-
-function loadPhotos() {
-  try { const r = localStorage.getItem(PHOTOS_KEY); return r ? JSON.parse(r) : []; }
-  catch { return []; }
+/* ── Community Photos storage (Supabase) ────────────────────────── */
+async function loadPhotos() {
+  try {
+    const { data } = await supa.from('photos').select('*').eq('status','published').order('created_at', { ascending: false });
+    return data || [];
+  } catch { return []; }
 }
-function savePhotos(photos) {
-  try { localStorage.setItem(PHOTOS_KEY, JSON.stringify(photos)); } catch {}
+async function savePhoto(photo) {
+  await supa.from('photos').insert({
+    id: String(photo.id || Date.now()),
+    image_data: photo.imageData || '',
+    caption: photo.caption || '',
+    status: 'pending',
+  });
 }
 
 /** Resize + compress an image File to JPEG base64 (max 960px wide). */
@@ -2286,18 +2292,19 @@ function FloatingGallery() {
   const visible = useInView(ref, 0.1);
 
   function refresh() {
-    setPhotos(loadPhotos().filter(p => p.status === 'approved').slice(0, 25));
+    loadPhotos().then(all => setPhotos(all.slice(0, 25)));
   }
 
   useEffect(() => {
     refresh();
-    const h = e => { if (e.key === PHOTOS_KEY) refresh(); };
-    window.addEventListener('storage', h);
-    return () => window.removeEventListener('storage', h);
+    const channel = supa.channel('photos-public')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'photos' }, refresh)
+      .subscribe();
+    return () => supa.removeChannel(channel);
   }, []);
 
-  function handleSubmit(photo) {
-    savePhotos([photo, ...loadPhotos()]);
+  async function handleSubmit(photo) {
+    await savePhoto(photo);
     refresh();
     setShowForm(false);
   }
@@ -2570,8 +2577,8 @@ function SubmitSection({ onSubmitEvent }) {
   const [showPhotoForm, setShowPhotoForm] = useState(false);
   const [showEventForm, setShowEventForm] = useState(false);
 
-  function handlePhotoSubmit(photo) {
-    savePhotos([photo, ...loadPhotos()]);
+  async function handlePhotoSubmit(photo) {
+    await savePhoto(photo);
     setShowPhotoForm(false);
   }
 
@@ -2687,8 +2694,10 @@ function Footer() {
 /* ══════════════════════════════════════════════════════════════════
    § 19  APP  (root state + view router)
 ══════════════════════════════════════════════════════════════════ */
-/* ── localStorage key shared with admin.html ── */
-const LS_KEY = 'baItems';
+/* ── Supabase client ── */
+const SUPA_URL = 'https://okaxtapijyxqerkzscyw.supabase.co';
+const SUPA_KEY = 'sb_publishable_rrtmucOsKRdZSnNoNEbbuw_ls_IRjaL';
+const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
 
 function isPastEvent(item) {
   const d = item.date || item.extractedDate;
@@ -2698,20 +2707,42 @@ function isPastEvent(item) {
   return new Date(d + 'T00:00:00') < today;
 }
 
-function loadPublicEvents() {
+async function loadPublicEvents() {
   try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return [];
-    const all     = JSON.parse(raw);
-    const current = all.filter(i => !isPastEvent(i));
-    if (current.length !== all.length) {
-      localStorage.setItem(LS_KEY, JSON.stringify(current));
-    }
-    return current;
+    const { data, error } = await supa
+      .from('events')
+      .select('*')
+      .eq('status', 'published')
+      .order('date', { ascending: true });
+    if (error) throw error;
+    return (data || []).map(e => ({
+      ...e,
+      imageUrl: e.image_url, image: e.image_url,
+      eventUrl: e.event_url, ticketUrl: e.event_url,
+    })).filter(e => !isPastEvent(e));
   } catch { return []; }
 }
-function saveToStorage(items) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(items)); } catch {}
+
+async function saveEventToSupa(item) {
+  const row = {
+    id: String(item.id || Date.now()),
+    title: item.title || '',
+    description: item.description || '',
+    date: item.date || null,
+    time: item.time || '',
+    city: item.city || '',
+    venue: item.venue || '',
+    address: item.address || '',
+    image_url: item.imageUrl || item.image || '',
+    event_url: item.eventUrl || item.ticketUrl || '',
+    tag: item.tag || '',
+    price: item.price || '',
+    note: item.note || '',
+    email: item.email || '',
+    status: item.status || 'pending',
+    featured: item.featured || false,
+  };
+  await supa.from('events').upsert(row);
 }
 
 function App() {
@@ -2721,51 +2752,33 @@ function App() {
   const [openEvent, setOpenEvent] = useState(null);
   const [toast,     setToast]     = useState(null);
 
-  // Load events from localStorage on mount (published only for display)
   useEffect(() => {
-    const stored = loadPublicEvents();
-    if (stored.length > 0) {
-      setEvents(stored);
-    } else {
-      // First visit — seed with INITIAL_EVENTS and save for admin to see
-      const seeded = INITIAL_EVENTS.map(e => ({
-        ...e, status:'published', imageUrl: e.image,
-        eventUrl: e.ticketUrl, address: e.address || '',
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-        publishedAt: new Date().toISOString(),
-      }));
-      saveToStorage(seeded);
-      setEvents(seeded);
-    }
+    loadPublicEvents().then(evs => setEvents(evs));
     removeWhiteBackground('bread.png',           src => setBreadSrc(src));
     removeWhiteBackgroundGlobal('logo-hand.png', src => setLogoSrc(src));
+
+    // Realtime: refresh events when DB changes
+    const channel = supa.channel('events-public')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => {
+        loadPublicEvents().then(evs => setEvents(evs));
+      }).subscribe();
+    return () => supa.removeChannel(channel);
   }, []);
 
-  // Listen for storage changes (when admin updates events in another tab)
-  useEffect(() => {
-    function onStorage(e) {
-      if (e.key === LS_KEY) setEvents(loadPublicEvents());
-    }
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
-
-  function handleNewSubmission(sub) {
-    // Save pending submission to localStorage for admin to review
-    const current = loadPublicEvents();
-    const newItem = {
+  async function handleNewSubmission(sub) {
+    await saveEventToSupa({
       ...sub,
-      // normalise field names used by admin panel
-      title:       sub.extractedTitle || '',
-      date:        sub.extractedDate  || '',
-      city:        sub.extractedCity  || '',
-      venue:       sub.extractedVenue || '',
-      address:     sub.extractedAddress || '',
-      description: sub.extractedDescription || '',
-      imageUrl:    sub.extractedImage || '',
-      eventUrl:    sub.extractedTicketUrl || '',
-    };
-    saveToStorage([newItem, ...current]);
+      id: sub.id || String(Date.now()),
+      title: sub.title || sub.extractedTitle || '',
+      date: sub.date || sub.extractedDate || '',
+      city: sub.city || sub.extractedCity || '',
+      venue: sub.venue || sub.extractedVenue || '',
+      address: sub.address || sub.extractedAddress || '',
+      description: sub.description || sub.extractedDescription || '',
+      imageUrl: sub.imageUrl || sub.extractedImage || '',
+      eventUrl: sub.eventUrl || sub.extractedTicketUrl || '',
+      status: 'pending',
+    });
     setToast({ message:'Renginys pateiktas peržiūrai!', type:'success' });
     setTimeout(() => setToast(null), 3000);
   }

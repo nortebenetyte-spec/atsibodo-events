@@ -6,6 +6,7 @@
   <title>Admin · Atsibodo Neveikti</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -80,8 +81,12 @@ const { useState, useEffect } = React;
 
 /* ─── Constants ────────────────────────────────────────────────────── */
 const ADMIN_PASSWORD = 'pepe1234'; // TODO: Move to server-side auth
-const STORAGE_KEY    = 'baItems';
-const AUTH_KEY       = 'baAdminAuth';
+const AUTH_KEY = 'baAdminAuth';
+
+/* ── Supabase client ── */
+const SUPA_URL = 'https://okaxtapijyxqerkzscyw.supabase.co';
+const SUPA_KEY = 'sb_publishable_rrtmucOsKRdZSnNoNEbbuw_ls_IRjaL';
+const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
 
 /* ─── Seed events shown on first visit ─────────────────────────────── */
 const SEED = [
@@ -120,45 +125,78 @@ const SEED = [
   },
 ];
 
-/* ─── Photos localStorage ───────────────────────────────────────────── */
-const PHOTOS_KEY = 'baPhotos';
-function loadPhotos() {
-  try { const r = localStorage.getItem(PHOTOS_KEY); return r ? JSON.parse(r) : []; }
-  catch { return []; }
-}
-function savePhotos(photos) {
-  try { localStorage.setItem(PHOTOS_KEY, JSON.stringify(photos)); } catch {}
-}
+/* ─── Supabase helpers ───────────────────────────────────────────────── */
 
-/* ─── Events localStorage ───────────────────────────────────────────── */
-
-/** Returns true if the event date is strictly in the past (before today). */
 function isPastEvent(item) {
-  const d = item.date || item.extractedDate;
+  const d = item.date;
   if (!d) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0,0,0,0);
   return new Date(d + 'T00:00:00') < today;
 }
 
-function loadItems() {
+function rowToItem(r) {
+  return { ...r, imageUrl: r.image_url, image: r.image_url,
+    eventUrl: r.event_url, ticketUrl: r.event_url };
+}
+
+function itemToRow(item) {
+  return {
+    id: String(item.id || Date.now()),
+    title: item.title || '', description: item.description || '',
+    date: item.date || null, time: item.time || '',
+    city: item.city || '', venue: item.venue || '',
+    address: item.address || '',
+    image_url: item.imageUrl || item.image || '',
+    event_url: item.eventUrl || item.ticketUrl || '',
+    tag: item.tag || '', price: item.price || '',
+    note: item.note || '', email: item.email || '',
+    status: item.status || 'pending',
+    featured: item.featured || false,
+    denial_reason: item.denialReason || '',
+  };
+}
+
+async function loadItems() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const all     = JSON.parse(raw);
-      const current = all.filter(i => !isPastEvent(i));
-      // Persist cleaned list if anything was removed
-      if (current.length !== all.length) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
-      }
-      return current;
+    const { data, error } = await supa.from('events').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    const items = (data || []).filter(i => !isPastEvent(i)).map(rowToItem);
+    if (items.length === 0) {
+      // Seed initial events on first load
+      const rows = SEED.map(itemToRow);
+      await supa.from('events').upsert(rows);
+      return SEED;
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED));
-    return SEED;
+    return items;
   } catch { return SEED; }
 }
-function saveItems(items) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch {}
+
+async function saveItem(item) {
+  await supa.from('events').upsert(itemToRow(item));
+}
+
+async function deleteItem(id) {
+  await supa.from('events').delete().eq('id', String(id));
+}
+
+async function loadPhotos() {
+  try {
+    const { data } = await supa.from('photos').select('*').order('created_at', { ascending: false });
+    return (data || []).map(r => ({ ...r, imageData: r.image_data }));
+  } catch { return []; }
+}
+
+async function savePhotoAdmin(photo) {
+  await supa.from('photos').upsert({
+    id: String(photo.id),
+    image_data: photo.imageData || photo.image_data || '',
+    caption: photo.caption || '',
+    status: photo.status || 'pending',
+  });
+}
+
+async function deletePhoto(id) {
+  await supa.from('photos').delete().eq('id', String(id));
 }
 
 /* ─── Utilities ─────────────────────────────────────────────────────── */
@@ -816,105 +854,107 @@ function App() {
 
   useEffect(() => {
     if (localStorage.getItem(AUTH_KEY) === 'true') setAuthed(true);
-    setItems(loadItems());
-    setPhotos(loadPhotos());
+    loadItems().then(setItems);
+    loadPhotos().then(setPhotos);
+
+    const ch1 = supa.channel('admin-events')
+      .on('postgres_changes', { event:'*', schema:'public', table:'events' }, () =>
+        loadItems().then(setItems)).subscribe();
+    const ch2 = supa.channel('admin-photos')
+      .on('postgres_changes', { event:'*', schema:'public', table:'photos' }, () =>
+        loadPhotos().then(setPhotos)).subscribe();
+    return () => { supa.removeChannel(ch1); supa.removeChannel(ch2); };
   }, []);
-
-  function persistPhotos(next) { setPhotos(next); savePhotos(next); }
-
-  function handleApprovePhoto(id) {
-    persistPhotos(photos.map(p => p.id===id ? {...p, status:'approved'} : p));
-    showToast('Nuotrauka patvirtinta ir paskelbta!');
-  }
-  function handleRejectPhoto(id) {
-    persistPhotos(photos.map(p => p.id===id ? {...p, status:'rejected'} : p));
-    showToast('Nuotrauka atmesta.', 'error');
-  }
-  function handleDeletePhoto(id) {
-    persistPhotos(photos.filter(p => p.id !== id));
-    showToast('Nuotrauka ištrinta.', 'error');
-  }
-
-  /* persist every change */
-  function persist(next) {
-    setItems(next);
-    saveItems(next);
-  }
 
   function showToast(msg, type = 'success') {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 2600);
   }
 
-  /* ── Actions ── */
-  function handleApprove(id) {
-    const now = new Date().toISOString();
-    persist(items.map(i => i.id === id
-      ? { ...i, status:'published', publishedAt:now, updatedAt:now }
-      : i));
+  async function handleApprovePhoto(id) {
+    const p = photos.find(p => p.id === id);
+    await savePhotoAdmin({ ...p, status:'published' });
+    setPhotos(photos.map(p => p.id===id ? {...p, status:'published'} : p));
+    showToast('Nuotrauka patvirtinta ir paskelbta!');
+  }
+  async function handleRejectPhoto(id) {
+    const p = photos.find(p => p.id === id);
+    await savePhotoAdmin({ ...p, status:'rejected' });
+    setPhotos(photos.map(p => p.id===id ? {...p, status:'rejected'} : p));
+    showToast('Nuotrauka atmesta.', 'error');
+  }
+  async function handleDeletePhoto(id) {
+    await deletePhoto(id);
+    setPhotos(photos.filter(p => p.id !== id));
+    showToast('Nuotrauka ištrinta.', 'error');
+  }
+
+  async function handleApprove(id) {
+    const item = items.find(i => i.id === id);
+    const updated = { ...item, status:'published', publishedAt: new Date().toISOString() };
+    await saveItem(updated);
+    setItems(items.map(i => i.id === id ? updated : i));
     showToast('Renginys patvirtintas ir paskelbtas!');
   }
 
-  function confirmDeny(reason) {
-    const now = new Date().toISOString();
-    persist(items.map(i => i.id === denying.id
-      ? { ...i, status:'denied', denialReason:reason, updatedAt:now }
-      : i));
+  async function confirmDeny(reason) {
+    const item = items.find(i => i.id === denying.id);
+    const updated = { ...item, status:'denied', denialReason: reason };
+    await saveItem(updated);
+    setItems(items.map(i => i.id === denying.id ? updated : i));
     setDenying(null);
     showToast('Renginys atmestas.', 'error');
   }
 
-  function handleSave(updated) {
-    const now = new Date().toISOString();
+  async function handleSave(updated) {
     if (updated._isNew) {
       const { _isNew, ...clean } = updated;
-      const item = {
-        ...clean, id: Date.now(),
-        createdAt: now, updatedAt: now,
-        publishedAt: clean.status === 'published' ? now : null,
-      };
-      persist([...items, item]);
+      const item = { ...clean, id: String(Date.now()), status: clean.status || 'published' };
+      await saveItem(item);
+      setItems([...items, item]);
       showToast('Renginys pridėtas!');
     } else {
-      persist(items.map(i => i.id === updated.id ? { ...updated, updatedAt:now } : i));
+      await saveItem(updated);
+      setItems(items.map(i => i.id === updated.id ? updated : i));
       showToast('Išsaugota.');
     }
     setEditing(null);
   }
 
-  function handleUnpublish(id) {
-    persist(items.map(i => i.id === id
-      ? { ...i, status:'pending', publishedAt:null, updatedAt:new Date().toISOString() }
-      : i));
+  async function handleUnpublish(id) {
+    const item = items.find(i => i.id === id);
+    const updated = { ...item, status:'pending' };
+    await saveItem(updated);
+    setItems(items.map(i => i.id === id ? updated : i));
     showToast('Renginys sustabdytas — grąžintas į "Laukiama".', 'warning');
   }
 
-  function handleDelete(id) {
-    setDelConfirm(id);
-  }
-  function confirmDelete() {
-    persist(items.filter(i => i.id !== delConfirm));
+  function handleDelete(id) { setDelConfirm(id); }
+  async function confirmDelete() {
+    await deleteItem(delConfirm);
+    setItems(items.filter(i => i.id !== delConfirm));
     setDelConfirm(null);
     showToast('Renginys ištrintas.', 'error');
   }
 
-  function handleReconsider(id) {
-    persist(items.map(i => i.id === id
-      ? { ...i, status:'pending', denialReason:'', updatedAt:new Date().toISOString() }
-      : i));
+  async function handleReconsider(id) {
+    const item = items.find(i => i.id === id);
+    const updated = { ...item, status:'pending', denialReason:'' };
+    await saveItem(updated);
+    setItems(items.map(i => i.id === id ? updated : i));
     showToast('Renginys grąžintas į "Laukiama".');
   }
 
-  function handleToggleFeatured(id) {
+  async function handleToggleFeatured(id) {
     const item = items.find(i => i.id === id);
     const featured = items.filter(i => i.featured && i.status === 'published');
     if (!item.featured && featured.length >= 3) {
       showToast('Jau yra 3 rekomenduojami. Pašalink vieną pirmiau.', 'warning');
       return;
     }
-    persist(items.map(i => i.id === id
-      ? { ...i, featured: !i.featured, updatedAt: new Date().toISOString() }
-      : i));
+    const updated = { ...item, featured: !item.featured };
+    await saveItem(updated);
+    setItems(items.map(i => i.id === id ? updated : i));
     showToast(item.featured ? 'Pašalinta iš bread.' : '★ Pridėta į bread!');
   }
 
