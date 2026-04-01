@@ -61,9 +61,10 @@
       min-height: 100vh;
       position: relative;
       opacity: 0;
-      transform: translateY(32px) scale(0.99);
-      transition: opacity 0.7s cubic-bezier(0.22,1,0.36,1),
-                  transform 0.7s cubic-bezier(0.22,1,0.36,1);
+      transform: translateY(40px) scale(0.98);
+      transition: opacity 0.9s cubic-bezier(0.16,1,0.3,1),
+                  transform 0.9s cubic-bezier(0.16,1,0.3,1);
+      will-change: opacity, transform;
     }
     .snap-section.in-view {
       opacity: 1;
@@ -76,9 +77,10 @@
       overflow: hidden;
       position: relative;
       opacity: 0;
-      transform: translateY(32px) scale(0.99);
-      transition: opacity 0.7s cubic-bezier(0.22,1,0.36,1),
-                  transform 0.7s cubic-bezier(0.22,1,0.36,1);
+      transform: translateY(40px) scale(0.98);
+      transition: opacity 0.9s cubic-bezier(0.16,1,0.3,1),
+                  transform 0.9s cubic-bezier(0.16,1,0.3,1);
+      will-change: opacity, transform;
     }
     .snap-strict.in-view {
       opacity: 1;
@@ -2826,23 +2828,48 @@ root.render(<App />);
 </script>
 
 <script>
-  /* Section entrance transitions — adds .in-view when section is visible */
   (function() {
     function initSectionObserver() {
+      const rootEl   = document.getElementById('root');
       const sections = document.querySelectorAll('.snap-section, .snap-strict');
-      if (!sections.length) { setTimeout(initSectionObserver, 200); return; }
+      if (!sections.length) { setTimeout(initSectionObserver, 150); return; }
+
+      // Stagger delays so each section has a unique entrance feel
+      const delays = [0, 0, 80, 60, 40, 20];
+      sections.forEach((s, i) => {
+        s.style.transitionDelay = (delays[i] || 0) + 'ms';
+      });
 
       const obs = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
+          // Only ever ADD in-view, never remove — no flash when scrolling away
           if (entry.isIntersecting) {
             entry.target.classList.add('in-view');
-          } else {
-            entry.target.classList.remove('in-view');
           }
         });
-      }, { threshold: 0.15, root: document.getElementById('root') });
+      }, {
+        threshold: 0.05,  // trigger very early — just 5% visible
+        root: rootEl,
+      });
 
       sections.forEach(s => obs.observe(s));
+
+      // Also watch scroll to pre-trigger next section slightly before snap
+      let lastSnap = 0;
+      rootEl.addEventListener('scroll', () => {
+        const now = Date.now();
+        if (now - lastSnap < 50) return;
+        lastSnap = now;
+        const scrollTop = rootEl.scrollTop;
+        const vh = rootEl.clientHeight;
+        sections.forEach(s => {
+          const top = s.offsetTop;
+          // Pre-trigger if within 30% of the next section
+          if (scrollTop + vh * 1.3 > top) {
+            s.classList.add('in-view');
+          }
+        });
+      }, { passive: true });
     }
     initSectionObserver();
   })();
