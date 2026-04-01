@@ -40,13 +40,16 @@
       text-transform: uppercase;
     }
 
-    /* ── Scroll-snap container ───────────────────────────────────── */
+    /* ── Main scroll: continuous (no page snapping) ───────────────── */
     html, body { height: 100%; margin: 0; overflow: hidden; }
     #root {
       height: 100vh;
-      overflow-y: scroll;
-      scroll-snap-type: y mandatory;
-      scroll-behavior: smooth;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scroll-snap-type: none;
+      scroll-behavior: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: none;
       font-family: 'JetBrains Mono', monospace;
       -webkit-font-smoothing: antialiased;
     }
@@ -56,8 +59,6 @@
     .cards-scroll::-webkit-scrollbar { display: none; }
 
     .snap-section {
-      scroll-snap-align: start;
-      scroll-snap-stop: always;
       min-height: 100vh;
       position: relative;
       opacity: 0;
@@ -70,10 +71,13 @@
       opacity: 1;
       transform: translateY(0) scale(1);
     }
+    /* Full-viewport blocks (gallery polaroids use position:absolute — need fixed height) */
     .snap-strict {
-      scroll-snap-align: start;
-      scroll-snap-stop: always;
+      min-height: 100vh;
+      min-height: 100dvh;
       height: 100vh;
+      height: 100dvh;
+      box-sizing: border-box;
       overflow: hidden;
       position: relative;
       opacity: 0;
@@ -369,6 +373,7 @@ function compressImage(file, callback) {
 /* Flood-fill from corners — used for bread (keeps crumb texture intact) */
 function removeWhiteBackground(src, onDone) {
   const img = new Image();
+  img.onerror = () => { try { onDone(src); } catch (_) {} };
   img.onload = () => {
     const W = img.naturalWidth, H = img.naturalHeight;
     const canvas = document.createElement('canvas');
@@ -402,6 +407,7 @@ function removeWhiteBackground(src, onDone) {
 function removeWhiteBackgroundGlobal(src, onDone) {
   const img = new Image();
   img.crossOrigin = 'anonymous';
+  img.onerror = () => { try { onDone(src); } catch (_) {} };
   img.onload = () => {
     const W = img.naturalWidth, H = img.naturalHeight;
     const canvas = document.createElement('canvas');
@@ -786,7 +792,7 @@ function FallingPattern({ color='rgba(70,70,180,0.13)', bgColor='#eeece5', durat
 /* ══════════════════════════════════════════════════════════════════
    § 7  FEATURED BREAD SECTION
 ══════════════════════════════════════════════════════════════════ */
-function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc }) {
+function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc, heroLoading }) {
   const ref     = useRef(null);
   const visible = useInView(ref, 0.05);
   const isPublished = e => e.approved || e.status === 'published';
@@ -804,7 +810,7 @@ function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc }) {
       backgroundSize: 'cover', backgroundPosition: 'center',
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'center',
-      overflow: isMobile ? 'auto' : 'hidden',
+      overflow: isMobile ? 'visible' : 'hidden',
       paddingTop: isMobile ? '28px' : 0,
       paddingBottom: isMobile ? '28px' : 0,
     }}>
@@ -824,8 +830,14 @@ function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc }) {
               display:'block', margin:'0 auto' }} />
         </div>
 
-        {/* Bread cards */}
-        {featured.length === 0 ? (
+        {heroLoading ? (
+          <p className={`anim-delay-1 ${visible ? 'anim-fadein' : ''}`}
+             style={{ opacity: visible ? undefined : 0,
+               fontFamily:'monospace', fontSize:'10px', letterSpacing:'0.22em',
+               textTransform:'lowercase', color:'rgba(255,255,255,0.45)', marginTop:'8px' }}>
+            palaukite
+          </p>
+        ) : featured.length === 0 ? (
           <div className={`anim-delay-1 ${visible ? 'anim-fadeup' : ''}`}
                style={{ opacity: visible ? undefined : 0 }}>
             <p style={{ fontFamily:'monospace', fontSize:'13px',
@@ -846,13 +858,14 @@ function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc }) {
           </div>
         )}
 
-        {/* Hint */}
+        {!heroLoading && (
         <p className={`anim-delay-3 ${visible ? 'anim-fadein' : ''}`}
            style={{ opacity: visible ? undefined : 0,
              fontFamily:'monospace', fontSize:'9px', letterSpacing:'0.28em',
              textTransform:'uppercase', color:'rgba(255,255,255,0.4)', marginTop:'20px' }}>
           Spustelėk ant duonos, kad sužinotum daugiau ↓
         </p>
+        )}
       </div>
     </section>
   );
@@ -2772,14 +2785,24 @@ async function saveEventToSupa(item) {
 
 function App() {
   const [events,   setEvents]   = useState([]);
+  const [eventsReady, setEventsReady] = useState(false);
+  const [breadReady, setBreadReady]   = useState(false);
   const [breadSrc, setBreadSrc] = useState('bread.png');
   const [logoSrc,  setLogoSrc]  = useState('logo-hand.png');
   const [openEvent, setOpenEvent] = useState(null);
   const [toast,     setToast]     = useState(null);
 
   useEffect(() => {
-    loadPublicEvents().then(evs => setEvents(evs));
-    removeWhiteBackground('bread.png',           src => setBreadSrc(src));
+    loadPublicEvents()
+      .then(evs => setEvents(evs))
+      .finally(() => setEventsReady(true));
+
+    removeWhiteBackground('bread.png', src => {
+      setBreadSrc(src);
+      setBreadReady(true);
+    });
+    const breadFailsafe = setTimeout(() => setBreadReady(true), 10000);
+
     removeWhiteBackgroundGlobal('logo-hand.png', src => setLogoSrc(src));
 
     // Realtime: refresh events when DB changes
@@ -2787,7 +2810,10 @@ function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => {
         loadPublicEvents().then(evs => setEvents(evs));
       }).subscribe();
-    return () => supa.removeChannel(channel);
+    return () => {
+      clearTimeout(breadFailsafe);
+      supa.removeChannel(channel);
+    };
   }, []);
 
   async function handleNewSubmission(sub) {
@@ -2822,7 +2848,8 @@ function App() {
 
       {/* ── Scroll-snap page ────────────────────────── */}
       {/* Section 1: Bread — promoted events (first thing you see) */}
-      <FeaturedBreadSection events={publishedEvents} breadSrc={breadSrc} onOpen={setOpenEvent} logoSrc={logoSrc} />
+      <FeaturedBreadSection events={publishedEvents} breadSrc={breadSrc} onOpen={setOpenEvent} logoSrc={logoSrc}
+        heroLoading={!eventsReady || !breadReady} />
 
 
       {/* Section 3: Events list + city filter */}
