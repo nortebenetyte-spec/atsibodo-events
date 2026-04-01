@@ -954,15 +954,29 @@ function EventListItem({ event }) {
    § 9  EVENTS LIST SECTION  (all approved events)
 ══════════════════════════════════════════════════════════════════ */
 function EventsListSection({ events }) {
-  const ref     = useRef(null);
-  const visible = useInView(ref, 0.05);
-  const [city, setCity] = useState('Visi');
-  const [isMobile, setIsMobile] = React.useState(window.innerWidth <= 768);
+  const ref        = useRef(null);
+  const scrollRef  = useRef(null);
+  const visible    = useInView(ref, 0.05);
+  const [city, setCity]           = useState('Visi');
+  const [activeCard, setActiveCard] = useState(0);
+  const [isMobile, setIsMobile]   = React.useState(window.innerWidth <= 768);
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
+
+  /* Track which card is active as user swipes */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const cardW = el.firstChild ? el.firstChild.offsetWidth + 20 : 320;
+      setActiveCard(Math.round(el.scrollLeft / cardW));
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  });
 
   const published = [...events]
     .filter(e => e.approved || e.status === 'published')
@@ -1013,17 +1027,22 @@ function EventsListSection({ events }) {
           </div>
         )}
 
-        {/* Swipe hint */}
+        {/* Swipe hint + live dots */}
         {filtered.length > 0 && (
-          <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'16px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'16px' }}>
             <span style={{ fontFamily:'monospace', fontSize:'10px', color:'rgba(255,255,255,0.45)',
               letterSpacing:'0.15em', textTransform:'uppercase' }}>
               Swipinkite →
             </span>
-            <div style={{ display:'flex', gap:'4px' }}>
+            <div style={{ display:'flex', gap:'5px', alignItems:'center' }}>
               {filtered.map((_, i) => (
-                <div key={i} style={{ width:'6px', height:'6px', borderRadius:'50%',
-                  background: i === 0 ? '#fff' : 'rgba(255,255,255,0.25)' }} />
+                <div key={i} style={{
+                  width:  i === activeCard ? '18px' : '6px',
+                  height: '6px',
+                  borderRadius: '99px',
+                  background: i === activeCard ? '#fff' : 'rgba(255,255,255,0.28)',
+                  transition: 'all 0.35s cubic-bezier(0.16,1,0.3,1)',
+                }} />
               ))}
             </div>
           </div>
@@ -1033,7 +1052,7 @@ function EventsListSection({ events }) {
         {filtered.length === 0
           ? <p style={{ fontFamily:'monospace', fontSize:'13px', color:'rgba(255,255,255,0.5)',
               textAlign:'center', padding:'48px 0' }}>Nėra renginių.</p>
-          : <div className="cards-scroll" style={{
+          : <div ref={scrollRef} className="cards-scroll" style={{
               display:'flex', flexDirection:'row', gap:'20px',
               overflowX:'auto', overflowY:'visible',
               paddingBottom:'16px', paddingRight:'24px',
@@ -1075,15 +1094,16 @@ function EventDetailModal({ event, onClose }) {
            style={{ background:'#fff', border:'2px solid #111' }}
            onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true">
 
-        {/* Close */}
+        {/* Close — always visible top-right X */}
         <button onClick={onClose} aria-label="Uždaryti"
-          style={{ position:'absolute', top:'14px', right:'14px', zIndex:10,
-            width:'36px', height:'36px', display:'flex', alignItems:'center', justifyContent:'center',
-            border:'1.5px solid #111', background:'transparent',
-            color:'#111', fontFamily:'monospace', fontSize:'13px', cursor:'pointer',
-            borderRadius:'4px', transition:'all 0.2s' }}
-          onMouseEnter={e=>e.currentTarget.style.background='#111' || (e.currentTarget.style.color='#fff')}
-          onMouseLeave={e=>{ e.currentTarget.style.background='transparent'; e.currentTarget.style.color='#111'; }}>✕</button>
+          style={{ position:'absolute', top:'12px', right:'12px', zIndex:20,
+            width:'44px', height:'44px', display:'flex', alignItems:'center', justifyContent:'center',
+            border:'2px solid #111', background:'#fff',
+            color:'#111', fontSize:'20px', lineHeight:1, cursor:'pointer',
+            borderRadius:'6px', transition:'background 0.18s, color 0.18s',
+            boxShadow:'0 2px 8px rgba(0,0,0,0.12)' }}
+          onMouseEnter={e=>{ e.currentTarget.style.background='#111'; e.currentTarget.style.color='#fff'; }}
+          onMouseLeave={e=>{ e.currentTarget.style.background='#fff'; e.currentTarget.style.color='#111'; }}>✕</button>
 
         <div style={{ display:'flex', flexDirection:'row', flexWrap:'wrap' }}>
           {/* Image */}
