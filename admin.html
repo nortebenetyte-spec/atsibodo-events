@@ -688,16 +688,16 @@ function PhotoCard({ photo, onApprove, onReject, onDelete }) {
         {/* Photo thumbnail */}
         <div style={{ width:'90px', height:'90px', flexShrink:0, overflow:'hidden', cursor:'pointer',
           border:'1px solid #e5e7eb' }} onClick={() => setExpanded(p => !p)}>
-          <img src={photo.imageData} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          <img src={photo.imageData || photo.image_data} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
         </div>
         {/* Info */}
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', alignItems:'center', marginBottom:'5px' }}>
-            <span className={`badge badge-${photo.status}`}>
-              {{ pending:'Laukiama', approved:'Patvirtinta', rejected:'Atmesta' }[photo.status]}
+            <span className={`badge badge-${photo.status === 'published' ? 'approved' : photo.status}`}>
+              {{ pending:'Laukiama', approved:'Patvirtinta', published:'Patvirtinta', rejected:'Atmesta' }[photo.status]}
             </span>
             <span style={{ fontFamily:'monospace', fontSize:'9px', color:'#9ca3af' }}>
-              {new Date(photo.createdAt).toLocaleString('lt-LT')}
+              {new Date(photo.created_at || photo.createdAt).toLocaleString('lt-LT')}
             </span>
           </div>
           {photo.caption && (
@@ -719,7 +719,7 @@ function PhotoCard({ photo, onApprove, onReject, onDelete }) {
             <button className="btn btn-success" onClick={() => onApprove(photo.id)}>✓ Patvirtinti</button>
             <button className="btn btn-danger"  onClick={() => onReject(photo.id)}>✕ Atmesti</button>
           </>}
-          {photo.status === 'approved' && (
+          {(photo.status === 'approved' || photo.status === 'published') && (
             <button className="btn btn-warn" onClick={() => onReject(photo.id)}>⏸ Pašalinti</button>
           )}
           {photo.status === 'rejected' && (
@@ -744,7 +744,7 @@ function PhotoCard({ photo, onApprove, onReject, onDelete }) {
       {/* Expanded full image */}
       {expanded && (
         <div style={{ borderTop:'1px solid #e5e7eb', padding:'14px', background:'#fafafa' }}>
-          <img src={photo.imageData} alt=""
+          <img src={photo.imageData || photo.image_data} alt=""
             style={{ maxWidth:'100%', maxHeight:'480px', objectFit:'contain', display:'block', margin:'0 auto' }} />
         </div>
       )}
@@ -752,13 +752,20 @@ function PhotoCard({ photo, onApprove, onReject, onDelete }) {
   );
 }
 
+function photoIsLive(p) { return p.status === 'published' || p.status === 'approved'; }
+
 function PhotosTab({ photos, onApprove, onReject, onDelete }) {
   const [filter, setFilter] = useState('pending');
-  const list = photos.filter(p => p.status === filter)
-    .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const list = photos.filter(p => {
+    if (filter === 'pending') return p.status === 'pending';
+    if (filter === 'approved') return photoIsLive(p);
+    if (filter === 'rejected') return p.status === 'rejected';
+    return false;
+  })
+    .sort((a,b) => new Date(b.created_at || b.createdAt) - new Date(a.created_at || a.createdAt));
   const counts = {
     pending:  photos.filter(p => p.status === 'pending').length,
-    approved: photos.filter(p => p.status === 'approved').length,
+    approved: photos.filter(photoIsLive).length,
     rejected: photos.filter(p => p.status === 'rejected').length,
   };
   return (
