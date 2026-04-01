@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin · Atsibodo Neveikti</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #f5f3ec;
+      background-image:
+        linear-gradient(rgba(70,70,180,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(70,70,180,0.06) 1px, transparent 1px);
+      background-size: 20px 20px;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .field {
+      width: 100%; border: 2px solid #000; background: #fff;
+      padding: 8px 10px; font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; outline: none; display: block;
+    }
+    .field:focus { background: #fffef9; }
+    label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+      font-weight: 700; display: block; margin-bottom: 4px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .card { background: #fff; border: 2px solid #000; box-shadow: 3px 3px 0 #000; }
+    .btn {
+      padding: 8px 14px; font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+      font-weight: 700; border: 2px solid #000; cursor: pointer;
+      transition: all 0.1s ease; display: inline-block; white-space: nowrap;
+    }
+    .btn:hover { transform: translate(-1px,-1px); box-shadow: 2px 2px 0 #000; }
+    .btn:active { transform: translate(0,0); box-shadow: none; }
+    .btn-primary   { background: #000; color: #fff; }
+    .btn-success   { background: #15803d; color: #fff; border-color: #15803d; }
+    .btn-danger    { background: #dc2626; color: #fff; border-color: #dc2626; }
+    .btn-ghost     { background: transparent; }
+    .btn-secondary { background: #f5f3ec; color: #111; }
+    .btn-warn      { background: #d97706; color: #fff; border-color: #d97706; }
+    .tab {
+      padding: 9px 16px; font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+      font-weight: 700; border: 2px solid transparent; cursor: pointer;
+      background: transparent; transition: all 0.12s;
+    }
+    .tab:hover { border-color: #000; }
+    .tab.active { border-color: #000; background: #fff; box-shadow: 2px 2px 0 #000; }
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.82);
+      backdrop-filter: blur(5px); display: flex; align-items: center;
+      justify-content: center; z-index: 100; padding: 16px;
+    }
+    .stat-card { background: #fff; border: 2px solid #000; padding: 18px 20px; }
+    .badge {
+      font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase; padding: 2px 8px;
+      display: inline-block;
+    }
+    .badge-pending   { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .badge-published { background: #dcfce7; color: #14532d; border: 1px solid #86efac; }
+    .badge-denied    { background: #fee2e2; color: #7f1d1d; border: 1px solid #fca5a5; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+/* ─── Constants ────────────────────────────────────────────────────── */
+const ADMIN_PASSWORD = 'admin2026'; // TODO: Move to server-side auth
+const STORAGE_KEY    = 'baItems';
+const AUTH_KEY       = 'baAdminAuth';
+
+/* ─── Seed events shown on first visit ─────────────────────────────── */
+const SEED = [
+  {
+    id: 1, status: 'published', featured: true, tag: 'Muzika', price: 'Nuo 15€',
+    title: 'Elektroninės muzikos vakaras',
+    date: '2026-09-12', time: '21:00',
+    city: 'Vilnius', venue: 'Opium Club', address: 'Vilniaus g. 18, Vilnius',
+    description: 'Intensyvus elektroninės muzikos vakaras su geriausiais vietiniais ir užsienio DJ.',
+    imageUrl: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&q=80',
+    eventUrl: '#', note: '', email: '',
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    publishedAt: new Date().toISOString(),
+  },
+  {
+    id: 2, status: 'published', featured: true, tag: 'Menas', price: 'Nemokama',
+    title: 'Šiuolaikinio meno paroda',
+    date: '2026-09-20', time: '11:00',
+    city: 'Kaunas', venue: 'M. K. Čiurlionio muziejus', address: 'Putvinskio g. 55, Kaunas',
+    description: 'Jaunų lietuvių menininkų šiuolaikinio meno paroda su darbais iš visos Lietuvos.',
+    imageUrl: 'https://images.unsplash.com/photo-1531913764164-f85c52e6e654?w=600&q=80',
+    eventUrl: '#', note: '', email: '',
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    publishedAt: new Date().toISOString(),
+  },
+  {
+    id: 3, status: 'published', featured: true, tag: 'Festivalis', price: 'Nuo 20€',
+    title: 'Klaipėdos jūrų festivalis',
+    date: '2026-07-28', time: '12:00',
+    city: 'Klaipėda', venue: 'Melnragės paplūdimys', address: 'Melnragė, Klaipėda',
+    description: 'Kasmetinis Klaipėdos jūrų festivalis su burlaivių paradu, koncertais ir pramogomis.',
+    imageUrl: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=600&q=80',
+    eventUrl: '#', note: '', email: '',
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    publishedAt: new Date().toISOString(),
+  },
+];
+
+/* ─── Photos localStorage ───────────────────────────────────────────── */
+const PHOTOS_KEY = 'baPhotos';
+function loadPhotos() {
+  try { const r = localStorage.getItem(PHOTOS_KEY); return r ? JSON.parse(r) : []; }
+  catch { return []; }
+}
+function savePhotos(photos) {
+  try { localStorage.setItem(PHOTOS_KEY, JSON.stringify(photos)); } catch {}
+}
+
+/* ─── Events localStorage ───────────────────────────────────────────── */
+
+/** Returns true if the event date is strictly in the past (before today). */
+function isPastEvent(item) {
+  const d = item.date || item.extractedDate;
+  if (!d) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return new Date(d + 'T00:00:00') < today;
+}
+
+function loadItems() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const all     = JSON.parse(raw);
+      const current = all.filter(i => !isPastEvent(i));
+      // Persist cleaned list if anything was removed
+      if (current.length !== all.length) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
+      }
+      return current;
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED));
+    return SEED;
+  } catch { return SEED; }
+}
+function saveItems(items) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch {}
+}
+
+/* ─── Utilities ─────────────────────────────────────────────────────── */
+function fmtDate(s) {
+  if (!s) return '—';
+  try {
+    return new Date(s + 'T00:00:00').toLocaleDateString('lt-LT',
+      { year:'numeric', month:'long', day:'numeric' });
+  } catch { return s; }
+}
+
+/* ─── Badge ─────────────────────────────────────────────────────────── */
+function Badge({ status }) {
+  const labels = { pending:'Laukiama', published:'Paskelbtas', denied:'Atmestas' };
+  return <span className={`badge badge-${status}`}>{labels[status] || status}</span>;
+}
+
+/* ─── Image Upload helper ────────────────────────────────────────────── */
+function ImageUpload({ value, onChange }) {
+  function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => onChange(reader.result);
+    reader.readAsDataURL(file);
+  }
+  return (
+    <div style={{ display:'flex', gap:'14px', alignItems:'flex-start' }}>
+      {/* Preview */}
+      <div style={{ width:'80px', height:'110px', flexShrink:0, background:'#e5e7eb',
+        border:'2px dashed #9ca3af', overflow:'hidden', display:'flex',
+        alignItems:'center', justifyContent:'center' }}>
+        {value
+          ? <img src={value} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          : <span style={{ fontSize:'10px', color:'#9ca3af', textAlign:'center', padding:'6px', lineHeight:'1.4' }}>Nėra nuotr.</span>
+        }
+      </div>
+      <div style={{ flex:1, display:'flex', flexDirection:'column', gap:'8px' }}>
+        <div>
+          <p style={{ fontFamily:'monospace', fontSize:'10px', color:'#6b7280', marginBottom:'5px' }}>Įkelti iš kompiuterio:</p>
+          <label style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'8px 14px',
+            background:'#111', color:'#fff', fontFamily:'monospace', fontSize:'11px',
+            letterSpacing:'0.1em', textTransform:'uppercase', cursor:'pointer' }}>
+            📁 Pasirinkti failą
+            <input type="file" accept="image/*" style={{ display:'none' }} onChange={handleFile} />
+          </label>
+          {value?.startsWith('data:') && (
+            <p style={{ fontFamily:'monospace', fontSize:'10px', color:'#16a34a', marginTop:'4px' }}>✓ Failas įkeltas</p>
+          )}
+        </div>
+        <div>
+          <p style={{ fontFamily:'monospace', fontSize:'10px', color:'#6b7280', marginBottom:'4px' }}>Arba URL nuoroda:</p>
+          <input className="field" placeholder="https://..."
+            value={value?.startsWith('data:') ? '' : (value || '')}
+            onChange={e => onChange(e.target.value)} />
+        </div>
+        {value && (
+          <button onClick={() => onChange('')}
+            style={{ fontFamily:'monospace', fontSize:'10px', color:'#dc2626',
+              textDecoration:'underline', background:'none', border:'none',
+              cursor:'pointer', textAlign:'left', padding:0 }}>
+            ✕ Pašalinti nuotrauką
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Edit Modal ─────────────────────────────────────────────────────── */
+function EditModal({ item, onSave, onClose }) {
+  const [f, setF] = useState({ ...item });
+  const set = k => e => setF(p => ({...p, [k]: e.target.value}));
+
+  useEffect(() => {
+    const h = e => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', h);
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', h); document.body.style.overflow = ''; };
+  }, [onClose]);
+
+  const isNew = !!item._isNew;
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="card" style={{ width:'100%', maxWidth:'680px', maxHeight:'90vh',
+        overflowY:'auto', padding:'24px 28px', background:'#f5f3ec' }}
+        onClick={e => e.stopPropagation()}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px' }}>
+          <h2 style={{ fontFamily:'Space Grotesk', fontWeight:900, fontSize:'18px', textTransform:'uppercase', margin:0 }}>
+            {isNew ? '+ Naujas renginys' : 'Redaguoti renginį'}
+          </h2>
+          <button className="btn btn-ghost" onClick={onClose} style={{ padding:'4px 10px' }}>✕</button>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'14px' }}>
+          {/* Title — full width */}
+          <div style={{ gridColumn:'1 / -1' }}>
+            <label>Pavadinimas *</label>
+            <input className="field" value={f.title||''} onChange={set('title')} placeholder="Renginio pavadinimas" />
+          </div>
+
+          <div>
+            <label>Data</label>
+            <input className="field" type="date" value={f.date||''} onChange={set('date')} />
+          </div>
+          <div>
+            <label>Laikas</label>
+            <input className="field" type="time" value={f.time||''} onChange={set('time')} />
+          </div>
+          <div>
+            <label>Miestas</label>
+            <input className="field" value={f.city||''} onChange={set('city')} placeholder="Vilnius" />
+          </div>
+          <div>
+            <label>Vieta / Salė</label>
+            <input className="field" value={f.venue||''} onChange={set('venue')} placeholder="Opium Club" />
+          </div>
+
+          {/* Address — full width */}
+          <div style={{ gridColumn:'1 / -1' }}>
+            <label>Adresas</label>
+            <input className="field" value={f.address||''} onChange={set('address')} placeholder="Gatvė ir miestas" />
+          </div>
+
+          <div>
+            <label>Kategorija</label>
+            <input className="field" value={f.tag||''} onChange={set('tag')} placeholder="Muzika / Menas..." />
+          </div>
+          <div>
+            <label>Kaina</label>
+            <input className="field" value={f.price||''} onChange={set('price')} placeholder="Nuo 15€ / Nemokama" />
+          </div>
+
+          {/* Description — full width */}
+          <div style={{ gridColumn:'1 / -1' }}>
+            <label>Aprašymas</label>
+            <textarea rows={4} className="field" style={{ resize:'vertical' }}
+              value={f.description||''} onChange={set('description')} />
+          </div>
+
+          {/* Image upload — full width */}
+          <div style={{ gridColumn:'1 / -1' }}>
+            <label>Plakatas / Nuotrauka</label>
+            <div style={{ marginTop:'6px' }}>
+              <ImageUpload value={f.imageUrl||''} onChange={v => setF(p=>({...p, imageUrl:v}))} />
+            </div>
+          </div>
+
+          <div style={{ gridColumn:'1 / -1' }}>
+            <label>Bilietų nuoroda</label>
+            <input className="field" value={f.eventUrl||''} onChange={set('eventUrl')} placeholder="https://bilietai.lt/..." />
+          </div>
+
+          {/* Featured checkbox */}
+          <div style={{ gridColumn:'1 / -1', display:'flex', alignItems:'center', gap:'10px' }}>
+            <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer',
+              textTransform:'none', letterSpacing:'normal', marginBottom:0, fontSize:'12px' }}>
+              <input type="checkbox" style={{ width:'16px', height:'16px', cursor:'pointer' }}
+                checked={f.featured||false}
+                onChange={e => setF(p=>({...p, featured: e.target.checked}))} />
+              ★ Rekomenduojamas (rodomas bread kortelėje viršuje)
+            </label>
+          </div>
+
+          {/* Denial reason — only for denied items */}
+          {'denialReason' in item && item.status === 'denied' && (
+            <div style={{ gridColumn:'1 / -1' }}>
+              <label>Atmetimo priežastis</label>
+              <input className="field" value={f.denialReason||''} onChange={set('denialReason')} />
+            </div>
+          )}
+        </div>
+
+        <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end', marginTop:'20px', paddingTop:'16px', borderTop:'2px solid #e5e7eb' }}>
+          <button className="btn btn-ghost" onClick={onClose}>Atšaukti</button>
+          <button className="btn btn-primary" onClick={() => onSave(f)}>
+            {isNew ? '+ Pridėti renginį' : '✓ Išsaugoti'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Deny Modal ─────────────────────────────────────────────────────── */
+function DenyModal({ item, onConfirm, onClose }) {
+  const [reason, setReason] = useState('');
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="card" style={{ width:'100%', maxWidth:'400px', padding:'24px', background:'#f5f3ec' }}
+        onClick={e => e.stopPropagation()}>
+        <h3 style={{ fontFamily:'Space Grotesk', fontWeight:900, fontSize:'16px', textTransform:'uppercase', marginBottom:'8px' }}>
+          Atmesti renginį?
+        </h3>
+        <p style={{ fontFamily:'monospace', fontSize:'12px', color:'#6b7280', marginBottom:'16px' }}>
+          „{item.title || item.extractedTitle}"
+        </p>
+        <label>Atmetimo priežastis (neprivaloma)</label>
+        <textarea className="field" rows={3} style={{ resize:'none' }}
+          value={reason} onChange={e => setReason(e.target.value)}
+          placeholder="Nurodykite priežastį teikėjui..." />
+        <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end', marginTop:'16px' }}>
+          <button className="btn btn-ghost" onClick={onClose}>Atšaukti</button>
+          <button className="btn btn-danger" onClick={() => onConfirm(reason)}>✕ Atmesti</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Event Row card ────────────────────────────────────────────────── */
+function EventRow({ item, actions }) {
+  const [open, setOpen] = useState(false);
+  const title = item.title || item.extractedTitle || '(be pavadinimo)';
+  const city  = item.city  || item.extractedCity  || '';
+  const venue = item.venue || item.extractedVenue || '';
+  const date  = item.date  || item.extractedDate  || '';
+  const img   = item.imageUrl || item.extractedImage || '';
+
+  return (
+    <div className="card" style={{ marginBottom:'10px', background:'#fff' }}>
+      <div style={{ display:'flex', gap:'12px', padding:'14px', alignItems:'flex-start' }}>
+        {/* Thumbnail */}
+        <div style={{ width:'56px', height:'76px', flexShrink:0, overflow:'hidden',
+          background:'#f3f4f6', border:'1px solid #e5e7eb' }}>
+          {img
+            ? <img src={img} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+            : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center',
+                justifyContent:'center', fontSize:'9px', color:'#9ca3af' }}>—</div>
+          }
+        </div>
+
+        {/* Info */}
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', alignItems:'center', marginBottom:'5px' }}>
+            <Badge status={item.status} />
+            {item.featured && (
+              <span style={{ background:'#fef3c7', color:'#92400e', border:'1px solid #fcd34d',
+                fontFamily:'monospace', fontSize:'9px', fontWeight:'bold',
+                letterSpacing:'0.1em', textTransform:'uppercase', padding:'1px 6px' }}>
+                ★ Rekomenduojamas
+              </span>
+            )}
+            {item.tag && (
+              <span style={{ background:'#f3f4f6', color:'#6b7280', fontFamily:'monospace',
+                fontSize:'9px', padding:'1px 6px', textTransform:'uppercase', letterSpacing:'0.08em' }}>
+                {item.tag}
+              </span>
+            )}
+          </div>
+
+          <h4 style={{ fontFamily:'Space Grotesk', fontWeight:900, fontSize:'15px',
+            lineHeight:'1.2', margin:'0 0 3px' }}>{title}</h4>
+
+          <p style={{ fontFamily:'monospace', fontSize:'10px', color:'#6b7280', margin:0 }}>
+            {fmtDate(date)}
+            {item.time && ` · ${item.time}`}
+            {city && ` · ${city}`}
+            {venue && ` · ${venue}`}
+            {item.price && ` · ${item.price}`}
+          </p>
+
+          {open && (
+            <div style={{ marginTop:'10px', paddingTop:'10px', borderTop:'1px solid #e5e7eb', display:'flex', flexDirection:'column', gap:'6px' }}>
+              {(item.description || item.extractedDescription) && (
+                <p style={{ fontFamily:'monospace', fontSize:'11px', color:'#374151', lineHeight:'1.6', margin:0 }}>
+                  {item.description || item.extractedDescription}
+                </p>
+              )}
+              {(item.address || item.extractedAddress) && (
+                <p style={{ fontFamily:'monospace', fontSize:'10px', color:'#6b7280', margin:0 }}>
+                  📍 {item.address || item.extractedAddress}
+                </p>
+              )}
+              {(item.eventUrl || item.extractedTicketUrl) && (
+                <a href={item.eventUrl || item.extractedTicketUrl} target="_blank" rel="noopener noreferrer"
+                  style={{ fontFamily:'monospace', fontSize:'10px', color:'#3b82f6', wordBreak:'break-all' }}>
+                  🎟 {item.eventUrl || item.extractedTicketUrl}
+                </a>
+              )}
+              {item.sourceUrl && (
+                <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer"
+                  style={{ fontFamily:'monospace', fontSize:'10px', color:'#9ca3af', wordBreak:'break-all' }}>
+                  🔗 Šaltinis: {item.sourceUrl}
+                </a>
+              )}
+              {item.note && (
+                <p style={{ fontFamily:'monospace', fontSize:'10px', background:'#fef3c7',
+                  color:'#92400e', padding:'6px 8px', margin:0 }}>
+                  Pastaba: {item.note}
+                </p>
+              )}
+              {item.email && (
+                <p style={{ fontFamily:'monospace', fontSize:'10px', color:'#9ca3af', margin:0 }}>El. paštas: {item.email}</p>
+              )}
+              {item.denialReason && (
+                <p style={{ fontFamily:'monospace', fontSize:'10px', background:'#fee2e2',
+                  color:'#7f1d1d', padding:'6px 8px', margin:0 }}>
+                  Atmetimo priežastis: {item.denialReason}
+                </p>
+              )}
+              <p style={{ fontFamily:'monospace', fontSize:'9px', color:'#9ca3af', margin:0 }}>
+                Pateikta: {item.createdAt ? new Date(item.createdAt).toLocaleString('lt-LT') : '—'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Action column */}
+        <div style={{ display:'flex', flexDirection:'column', gap:'5px', flexShrink:0, minWidth:'110px' }}>
+          {actions}
+          <button className="btn btn-ghost" onClick={() => setOpen(p => !p)}
+            style={{ textAlign:'center', fontSize:'10px' }}>
+            {open ? '▲ Mažiau' : '▼ Daugiau'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Pending tab ────────────────────────────────────────────────────── */
+/* ─── Bread / Featured tab ───────────────────────────────────────────── */
+function BreadTab({ items, onEdit, onToggleFeatured }) {
+  const published = items.filter(i => i.status === 'published')
+    .sort((a,b) => new Date(a.date||'9999') - new Date(b.date||'9999'));
+  const featured  = published.filter(i => i.featured);
+  const rest      = published.filter(i => !i.featured);
+
+  const Row = ({ item, isFeatured }) => (
+    <div style={{ display:'flex', alignItems:'center', gap:'12px', padding:'12px 14px',
+      background: isFeatured ? '#fff8e1' : '#fff',
+      border: isFeatured ? '2px solid #f59e0b' : '2px solid #e5e7eb',
+      marginBottom:'8px', borderRadius:'4px' }}>
+      {/* Poster thumb */}
+      <div style={{ width:'52px', height:'52px', flexShrink:0, overflow:'hidden',
+        background:'#f3f4f6', border:'1px solid #e5e7eb', borderRadius:'3px' }}>
+        {(item.imageUrl||item.image)
+          ? <img src={item.imageUrl||item.image} alt=""
+              style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          : <div style={{ width:'100%', height:'100%', background:'#e5e7eb', display:'flex',
+              alignItems:'center', justifyContent:'center', fontSize:'18px' }}>🍞</div>
+        }
+      </div>
+      {/* Info */}
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
+          {isFeatured && <span style={{ background:'#f59e0b', color:'#fff', fontSize:'9px',
+            fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em',
+            padding:'2px 6px', borderRadius:'3px' }}>★ Bread</span>}
+          <span style={{ fontFamily:'Space Grotesk', fontWeight:700, fontSize:'14px',
+            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.title}</span>
+        </div>
+        <span style={{ fontFamily:'monospace', fontSize:'10px', color:'#6b7280' }}>
+          {item.date||'—'} · {item.city||'—'} · {item.venue||'—'}
+        </span>
+      </div>
+      {/* Actions */}
+      <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
+        <button className="btn" style={{
+            background: isFeatured ? '#f59e0b' : 'transparent',
+            borderColor: isFeatured ? '#f59e0b' : '#d1d5db',
+            color: isFeatured ? '#fff' : '#6b7280',
+          }}
+          onClick={() => onToggleFeatured(item.id)}>
+          {isFeatured ? '★ Bread' : '☆ Pridėti'}
+        </button>
+        <button className="btn btn-secondary" onClick={() => onEdit(item)}>✏ Redaguoti</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Featured count indicator */}
+      <div style={{ display:'flex', alignItems:'center', gap:'12px',
+        padding:'12px 16px', background:'#fffbeb', border:'2px solid #f59e0b',
+        marginBottom:'20px', borderRadius:'4px' }}>
+        <span style={{ fontSize:'24px' }}>🍞</span>
+        <div>
+          <div style={{ fontFamily:'Space Grotesk', fontWeight:900, fontSize:'14px' }}>
+            {featured.length} / 3 rekomenduojami renginiai
+          </div>
+          <div style={{ fontFamily:'monospace', fontSize:'10px', color:'#92400e' }}>
+            Svetainėje rodomos iki 3 bread kortelės. Pažymėk renginiui ★ Bread kad jis atsirastų viršuje.
+          </div>
+        </div>
+      </div>
+
+      {/* Featured */}
+      {featured.length > 0 && (
+        <>
+          <div style={{ fontFamily:'monospace', fontSize:'10px', fontWeight:700,
+            textTransform:'uppercase', letterSpacing:'0.1em', color:'#92400e',
+            marginBottom:'8px' }}>★ Rodomi viršuje (bread)</div>
+          {featured.map(i => <Row key={i.id} item={i} isFeatured={true} />)}
+        </>
+      )}
+
+      {/* Divider */}
+      {featured.length > 0 && rest.length > 0 && (
+        <div style={{ borderTop:'2px dashed #e5e7eb', margin:'16px 0' }} />
+      )}
+
+      {/* Rest */}
+      {rest.length > 0 && (
+        <>
+          <div style={{ fontFamily:'monospace', fontSize:'10px', fontWeight:700,
+            textTransform:'uppercase', letterSpacing:'0.1em', color:'#9ca3af',
+            marginBottom:'8px' }}>Paskelbti renginiai (nerekomenduojami)</div>
+          {rest.map(i => <Row key={i.id} item={i} isFeatured={false} />)}
+        </>
+      )}
+
+      {published.length === 0 && (
+        <p style={{ fontFamily:'monospace', fontSize:'13px', color:'#9ca3af',
+          textAlign:'center', padding:'56px 0' }}>
+          Nėra paskelbtų renginių.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function PendingTab({ items, onApprove, onDeny, onEdit }) {
+  const list = items.filter(i => i.status === 'pending')
+    .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  if (!list.length) return (
+    <p style={{ fontFamily:'monospace', fontSize:'13px', color:'#9ca3af', textAlign:'center', padding:'56px 0' }}>
+      Nėra laukiančių renginių. 🎉
+    </p>
+  );
+  return list.map(item => (
+    <EventRow key={item.id} item={item} actions={<>
+      <button className="btn btn-success" onClick={() => onApprove(item.id)}>✓ Patvirtinti</button>
+      <button className="btn btn-danger"  onClick={() => onDeny(item)}>✕ Atmesti</button>
+      <button className="btn btn-secondary" onClick={() => onEdit(item)}>✏ Redaguoti</button>
+    </>} />
+  ));
+}
+
+/* ─── Published tab ──────────────────────────────────────────────────── */
+function PublishedTab({ items, onEdit, onUnpublish, onDelete }) {
+  const list = items.filter(i => i.status === 'published')
+    .sort((a,b) => new Date(a.date||'9999') - new Date(b.date||'9999'));
+  if (!list.length) return (
+    <p style={{ fontFamily:'monospace', fontSize:'13px', color:'#9ca3af', textAlign:'center', padding:'56px 0' }}>
+      Nėra paskelbtų renginių.
+    </p>
+  );
+  return list.map(item => (
+    <EventRow key={item.id} item={item} actions={<>
+      <button className="btn btn-secondary" onClick={() => onEdit(item)}>✏ Redaguoti</button>
+      <button className="btn btn-warn"      onClick={() => onUnpublish(item.id)}>⏸ Stabdyti</button>
+      <button className="btn btn-ghost"     onClick={() => onDelete(item.id)}
+        style={{ color:'#dc2626', borderColor:'#dc2626' }}>✕ Ištrinti</button>
+    </>} />
+  ));
+}
+
+/* ─── Denied tab ─────────────────────────────────────────────────────── */
+function DeniedTab({ items, onReconsider, onDelete }) {
+  const list = items.filter(i => i.status === 'denied')
+    .sort((a,b) => new Date(b.updatedAt||b.createdAt) - new Date(a.updatedAt||a.createdAt));
+  if (!list.length) return (
+    <p style={{ fontFamily:'monospace', fontSize:'13px', color:'#9ca3af', textAlign:'center', padding:'56px 0' }}>
+      Nėra atmestų renginių.
+    </p>
+  );
+  return list.map(item => (
+    <EventRow key={item.id} item={item} actions={<>
+      <button className="btn btn-secondary" onClick={() => onReconsider(item.id)}>↩ Grąžinti</button>
+      <button className="btn btn-ghost" onClick={() => onDelete(item.id)}
+        style={{ color:'#dc2626', borderColor:'#dc2626' }}>✕ Ištrinti</button>
+    </>} />
+  ));
+}
+
+/* ─── Photos tab ────────────────────────────────────────────────────── */
+function PhotoCard({ photo, onApprove, onReject, onDelete }) {
+  const [expanded, setExpanded] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  return (
+    <div className="card" style={{ marginBottom:'12px', background:'#fff', overflow:'hidden' }}>
+      <div style={{ display:'flex', gap:'14px', padding:'14px', alignItems:'flex-start' }}>
+        {/* Photo thumbnail */}
+        <div style={{ width:'90px', height:'90px', flexShrink:0, overflow:'hidden', cursor:'pointer',
+          border:'1px solid #e5e7eb' }} onClick={() => setExpanded(p => !p)}>
+          <img src={photo.imageData} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+        </div>
+        {/* Info */}
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', alignItems:'center', marginBottom:'5px' }}>
+            <span className={`badge badge-${photo.status}`}>
+              {{ pending:'Laukiama', approved:'Patvirtinta', rejected:'Atmesta' }[photo.status]}
+            </span>
+            <span style={{ fontFamily:'monospace', fontSize:'9px', color:'#9ca3af' }}>
+              {new Date(photo.createdAt).toLocaleString('lt-LT')}
+            </span>
+          </div>
+          {photo.caption && (
+            <p style={{ fontFamily:'Space Grotesk', fontWeight:700, fontSize:'14px',
+              margin:'0 0 2px', lineHeight:'1.3' }}>"{photo.caption}"</p>
+          )}
+          <p style={{ fontFamily:'monospace', fontSize:'10px', color:'#6b7280', margin:0 }}>
+            {[photo.eventName, photo.authorName].filter(Boolean).join(' · ') || '(be antraštės)'}
+          </p>
+          {photo.email && (
+            <p style={{ fontFamily:'monospace', fontSize:'10px', color:'#9ca3af', margin:'3px 0 0' }}>
+              {photo.email}
+            </p>
+          )}
+        </div>
+        {/* Actions */}
+        <div style={{ display:'flex', flexDirection:'column', gap:'5px', flexShrink:0, minWidth:'110px' }}>
+          {photo.status === 'pending' && <>
+            <button className="btn btn-success" onClick={() => onApprove(photo.id)}>✓ Patvirtinti</button>
+            <button className="btn btn-danger"  onClick={() => onReject(photo.id)}>✕ Atmesti</button>
+          </>}
+          {photo.status === 'approved' && (
+            <button className="btn btn-warn" onClick={() => onReject(photo.id)}>⏸ Pašalinti</button>
+          )}
+          {photo.status === 'rejected' && (
+            <button className="btn btn-secondary" onClick={() => onApprove(photo.id)}>↩ Grąžinti</button>
+          )}
+          {confirmDel
+            ? <div style={{ display:'flex', gap:'4px' }}>
+                <button className="btn btn-danger" style={{ flex:1, padding:'6px 6px' }}
+                  onClick={() => onDelete(photo.id)}>Taip</button>
+                <button className="btn btn-ghost" style={{ flex:1, padding:'6px 6px' }}
+                  onClick={() => setConfirmDel(false)}>Ne</button>
+              </div>
+            : <button className="btn btn-ghost" style={{ color:'#dc2626', borderColor:'#dc2626' }}
+                onClick={() => setConfirmDel(true)}>✕ Ištrinti</button>
+          }
+          <button className="btn btn-ghost" style={{ fontSize:'10px' }}
+            onClick={() => setExpanded(p => !p)}>
+            {expanded ? '▲' : '▼ Peržiūrėti'}
+          </button>
+        </div>
+      </div>
+      {/* Expanded full image */}
+      {expanded && (
+        <div style={{ borderTop:'1px solid #e5e7eb', padding:'14px', background:'#fafafa' }}>
+          <img src={photo.imageData} alt=""
+            style={{ maxWidth:'100%', maxHeight:'480px', objectFit:'contain', display:'block', margin:'0 auto' }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PhotosTab({ photos, onApprove, onReject, onDelete }) {
+  const [filter, setFilter] = useState('pending');
+  const list = photos.filter(p => p.status === filter)
+    .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const counts = {
+    pending:  photos.filter(p => p.status === 'pending').length,
+    approved: photos.filter(p => p.status === 'approved').length,
+    rejected: photos.filter(p => p.status === 'rejected').length,
+  };
+  return (
+    <div>
+      <div style={{ display:'flex', gap:'6px', marginBottom:'18px', flexWrap:'wrap' }}>
+        {[['pending',`Laukia (${counts.pending})`],['approved',`Patvirtintos (${counts.approved})`],['rejected',`Atmestos (${counts.rejected})`]].map(([id,label]) => (
+          <button key={id} className={`tab ${filter===id?'active':''}`} onClick={() => setFilter(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {list.length === 0
+        ? <p style={{ fontFamily:'monospace', fontSize:'13px', color:'#9ca3af', textAlign:'center', padding:'48px 0' }}>
+            Nėra nuotraukų šiame sąraše.
+          </p>
+        : list.map(photo => (
+            <PhotoCard key={photo.id} photo={photo}
+              onApprove={onApprove} onReject={onReject} onDelete={onDelete} />
+          ))
+      }
+    </div>
+  );
+}
+
+/* ─── Login screen ───────────────────────────────────────────────────── */
+function LoginScreen({ onLogin }) {
+  const [pw,  setPw]  = useState('');
+  const [err, setErr] = useState(false);
+
+  function attempt() {
+    if (pw === ADMIN_PASSWORD) {
+      localStorage.setItem(AUTH_KEY, 'true');
+      onLogin();
+    } else {
+      setErr(true);
+      setPw('');
+    }
+  }
+
+  return (
+    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center',
+      justifyContent:'center', padding:'16px' }}>
+      <div className="card" style={{ width:'100%', maxWidth:'360px',
+        padding:'36px 32px', background:'#f5f3ec' }}>
+        <h1 style={{ fontFamily:'Space Grotesk', fontWeight:900, fontSize:'24px',
+          textTransform:'uppercase', letterSpacing:'-0.02em', marginBottom:'4px' }}>
+          Admin
+        </h1>
+        <p style={{ fontFamily:'monospace', fontSize:'11px', color:'#6b7280', marginBottom:'28px' }}>
+          Atsibodo Neveikti · Moderavimo sistema
+        </p>
+        <label>Slaptažodis</label>
+        <input className="field" type="password" value={pw}
+          onChange={e => { setPw(e.target.value); setErr(false); }}
+          onKeyDown={e => e.key === 'Enter' && attempt()}
+          placeholder="••••••••" autoFocus />
+        {err && (
+          <p style={{ fontFamily:'monospace', fontSize:'11px', color:'#dc2626', marginTop:'6px' }}>
+            Neteisingas slaptažodis.
+          </p>
+        )}
+        <button className="btn btn-primary" onClick={attempt}
+          style={{ width:'100%', marginTop:'16px', padding:'12px', textAlign:'center' }}>
+          Prisijungti →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Toast ──────────────────────────────────────────────────────────── */
+function Toast({ toast }) {
+  if (!toast) return null;
+  const bg = { success:'#111', error:'#dc2626', warning:'#d97706' }[toast.type] || '#111';
+  return (
+    <div style={{ position:'fixed', bottom:'24px', right:'24px', padding:'12px 20px',
+      background:bg, color:'#fff', fontFamily:'monospace', fontSize:'12px',
+      zIndex:200, border:'2px solid #000', boxShadow:'3px 3px 0 #000',
+      maxWidth:'320px', lineHeight:'1.5' }}>
+      {toast.msg}
+    </div>
+  );
+}
+
+/* ─── Main App ───────────────────────────────────────────────────────── */
+function App() {
+  const [authed,  setAuthed]  = useState(false);
+  const [items,   setItems]   = useState([]);
+  const [photos,  setPhotos]  = useState([]);
+  const [tab,     setTab]     = useState('bread');
+  const [editing, setEditing] = useState(null);
+  const [denying, setDenying] = useState(null);
+  const [toast,   setToast]   = useState(null);
+  const [delConfirm, setDelConfirm] = useState(null);
+
+  useEffect(() => {
+    if (localStorage.getItem(AUTH_KEY) === 'true') setAuthed(true);
+    setItems(loadItems());
+    setPhotos(loadPhotos());
+  }, []);
+
+  function persistPhotos(next) { setPhotos(next); savePhotos(next); }
+
+  function handleApprovePhoto(id) {
+    persistPhotos(photos.map(p => p.id===id ? {...p, status:'approved'} : p));
+    showToast('Nuotrauka patvirtinta ir paskelbta!');
+  }
+  function handleRejectPhoto(id) {
+    persistPhotos(photos.map(p => p.id===id ? {...p, status:'rejected'} : p));
+    showToast('Nuotrauka atmesta.', 'error');
+  }
+  function handleDeletePhoto(id) {
+    persistPhotos(photos.filter(p => p.id !== id));
+    showToast('Nuotrauka ištrinta.', 'error');
+  }
+
+  /* persist every change */
+  function persist(next) {
+    setItems(next);
+    saveItems(next);
+  }
+
+  function showToast(msg, type = 'success') {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2600);
+  }
+
+  /* ── Actions ── */
+  function handleApprove(id) {
+    const now = new Date().toISOString();
+    persist(items.map(i => i.id === id
+      ? { ...i, status:'published', publishedAt:now, updatedAt:now }
+      : i));
+    showToast('Renginys patvirtintas ir paskelbtas!');
+  }
+
+  function confirmDeny(reason) {
+    const now = new Date().toISOString();
+    persist(items.map(i => i.id === denying.id
+      ? { ...i, status:'denied', denialReason:reason, updatedAt:now }
+      : i));
+    setDenying(null);
+    showToast('Renginys atmestas.', 'error');
+  }
+
+  function handleSave(updated) {
+    const now = new Date().toISOString();
+    if (updated._isNew) {
+      const { _isNew, ...clean } = updated;
+      const item = {
+        ...clean, id: Date.now(),
+        createdAt: now, updatedAt: now,
+        publishedAt: clean.status === 'published' ? now : null,
+      };
+      persist([...items, item]);
+      showToast('Renginys pridėtas!');
+    } else {
+      persist(items.map(i => i.id === updated.id ? { ...updated, updatedAt:now } : i));
+      showToast('Išsaugota.');
+    }
+    setEditing(null);
+  }
+
+  function handleUnpublish(id) {
+    persist(items.map(i => i.id === id
+      ? { ...i, status:'pending', publishedAt:null, updatedAt:new Date().toISOString() }
+      : i));
+    showToast('Renginys sustabdytas — grąžintas į "Laukiama".', 'warning');
+  }
+
+  function handleDelete(id) {
+    setDelConfirm(id);
+  }
+  function confirmDelete() {
+    persist(items.filter(i => i.id !== delConfirm));
+    setDelConfirm(null);
+    showToast('Renginys ištrintas.', 'error');
+  }
+
+  function handleReconsider(id) {
+    persist(items.map(i => i.id === id
+      ? { ...i, status:'pending', denialReason:'', updatedAt:new Date().toISOString() }
+      : i));
+    showToast('Renginys grąžintas į "Laukiama".');
+  }
+
+  function handleToggleFeatured(id) {
+    const item = items.find(i => i.id === id);
+    const featured = items.filter(i => i.featured && i.status === 'published');
+    if (!item.featured && featured.length >= 3) {
+      showToast('Jau yra 3 rekomenduojami. Pašalink vieną pirmiau.', 'warning');
+      return;
+    }
+    persist(items.map(i => i.id === id
+      ? { ...i, featured: !i.featured, updatedAt: new Date().toISOString() }
+      : i));
+    showToast(item.featured ? 'Pašalinta iš bread.' : '★ Pridėta į bread!');
+  }
+
+  function handleAddNew() {
+    setTab('published');
+    setEditing({
+      _isNew: true, status:'published', featured:false,
+      title:'', date:'', time:'', city:'', venue:'', address:'',
+      description:'', imageUrl:'', eventUrl:'', tag:'', price:'',
+    });
+  }
+
+  function handleLogout() {
+    localStorage.removeItem(AUTH_KEY);
+    setAuthed(false);
+  }
+
+  /* ── Login gate ── */
+  if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
+
+  const counts = {
+    pending:   items.filter(i => i.status === 'pending').length,
+    published: items.filter(i => i.status === 'published').length,
+    denied:    items.filter(i => i.status === 'denied').length,
+  };
+
+  return (
+    <div style={{ minHeight:'100vh' }}>
+
+      {/* Top bar */}
+      <header style={{ background:'#000', color:'#fff', padding:'0 24px',
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        height:'52px', position:'sticky', top:0, zIndex:50 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'14px' }}>
+          <span style={{ fontFamily:'Space Grotesk', fontWeight:900, fontSize:'14px',
+            letterSpacing:'-0.01em', textTransform:'uppercase' }}>
+            Admin
+          </span>
+          <span style={{ fontFamily:'monospace', fontSize:'10px', color:'#6b7280',
+            borderLeft:'1px solid #333', paddingLeft:'14px' }}>
+            Atsibodo Neveikti
+          </span>
+        </div>
+        <div style={{ display:'flex', gap:'16px', alignItems:'center' }}>
+          <a href="/" style={{ fontFamily:'monospace', fontSize:'11px',
+            color:'#9ca3af', textDecoration:'none' }}>← Svetainė</a>
+          <button onClick={handleLogout}
+            style={{ fontFamily:'monospace', fontSize:'11px', color:'#9ca3af',
+              background:'none', border:'none', cursor:'pointer' }}>
+            Atsijungti
+          </button>
+        </div>
+      </header>
+
+      <main style={{ maxWidth:'880px', margin:'0 auto', padding:'32px 16px' }}>
+
+        {/* Stats */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'10px', marginBottom:'28px' }}>
+          {[
+            ['Laukia peržiūros', counts.pending,                           '#fef3c7','#92400e'],
+            ['Paskelbti',        counts.published,                         '#dcfce7','#14532d'],
+            ['Atmesti',          counts.denied,                            '#fee2e2','#7f1d1d'],
+            ['Nuotraukos 📸',    photos.filter(p=>p.status==='pending').length, '#ede9fe','#4c1d95'],
+          ].map(([label, count, bg, color]) => (
+            <div key={label} className="stat-card" style={{ background:bg }}>
+              <div style={{ fontFamily:'Space Grotesk', fontWeight:900, fontSize:'32px', color, lineHeight:1 }}>
+                {count}
+              </div>
+              <div style={{ fontFamily:'monospace', fontSize:'9px', textTransform:'uppercase',
+                letterSpacing:'0.1em', color, opacity:0.75, marginTop:'4px' }}>
+                {label}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Tabs + Add button */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+          flexWrap:'wrap', gap:'10px', marginBottom:'20px' }}>
+          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+            {[
+              ['bread',     `🍞 Bread (${items.filter(i=>i.featured&&i.status==='published').length}/3)`],
+              ['pending',   `Laukiama (${counts.pending})`],
+              ['published', `Paskelbti (${counts.published})`],
+              ['denied',    `Atmesti (${counts.denied})`],
+              ['photos',    `Nuotraukos (${photos.filter(p=>p.status==='pending').length})`],
+            ].map(([id, label]) => (
+              <button key={id} className={`tab ${tab === id ? 'active' : ''}`}
+                onClick={() => setTab(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {tab !== 'photos' && (
+            <button className="btn btn-primary" onClick={handleAddNew}
+              style={{ padding:'10px 20px' }}>
+              + Naujas renginys
+            </button>
+          )}
+        </div>
+
+        {/* Tab content */}
+        {tab === 'bread'     && <BreadTab     items={items} onEdit={setEditing} onToggleFeatured={handleToggleFeatured} />}
+        {tab === 'pending'   && <PendingTab   items={items} onApprove={handleApprove} onDeny={setDenying} onEdit={setEditing} />}
+        {tab === 'published' && <PublishedTab items={items} onEdit={setEditing} onUnpublish={handleUnpublish} onDelete={handleDelete} />}
+        {tab === 'denied'    && <DeniedTab    items={items} onReconsider={handleReconsider} onDelete={handleDelete} />}
+        {tab === 'photos'    && <PhotosTab    photos={photos} onApprove={handleApprovePhoto} onReject={handleRejectPhoto} onDelete={handleDeletePhoto} />}
+
+      </main>
+
+      {/* Modals */}
+      {editing    && <EditModal item={editing} onSave={handleSave} onClose={() => setEditing(null)} />}
+      {denying    && <DenyModal item={denying} onConfirm={confirmDeny} onClose={() => setDenying(null)} />}
+
+      {/* Delete confirm */}
+      {delConfirm && (
+        <div className="overlay" onClick={() => setDelConfirm(null)}>
+          <div className="card" style={{ padding:'28px', maxWidth:'360px', width:'100%', background:'#f5f3ec' }}
+            onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontFamily:'Space Grotesk', fontWeight:900, fontSize:'16px',
+              textTransform:'uppercase', marginBottom:'10px' }}>
+              Ištrinti renginį?
+            </h3>
+            <p style={{ fontFamily:'monospace', fontSize:'12px', color:'#6b7280', marginBottom:'20px' }}>
+              Šis veiksmas negrįžtamas.
+            </p>
+            <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setDelConfirm(null)}>Atšaukti</button>
+              <button className="btn btn-danger" onClick={confirmDelete}>✕ Ištrinti</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Toast toast={toast} />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
