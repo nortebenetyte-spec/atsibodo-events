@@ -81,7 +81,9 @@ const { useState, useEffect } = React;
 
 /* ─── Constants ────────────────────────────────────────────────────── */
 const ADMIN_PASSWORD = 'pepe1234'; // TODO: Move to server-side auth
-const AUTH_KEY = 'baAdminAuth';
+const AUTH_KEY    = 'baAdminAuth';
+const OPENAI_KEY_STORAGE = 'baOpenAiKey';
+function getOpenAiKey() { return localStorage.getItem(OPENAI_KEY_STORAGE) || ''; }
 
 /* ── Supabase client ── */
 const SUPA_URL = 'https://okaxtapijyxqerkzscyw.supabase.co';
@@ -842,15 +844,147 @@ function Toast({ toast }) {
 }
 
 /* ─── Main App ───────────────────────────────────────────────────────── */
+/* ── AI URL extraction ──────────────────────────────────────────── */
+async function extractEventFromUrl(url) {
+  // Fetch page content via Jina reader (free, no API key, bypasses CORS)
+  const jinaRes = await fetch(`https://r.jina.ai/${encodeURIComponent(url)}`, {
+    headers: { 'Accept': 'text/plain' }
+  });
+  const pageText = await jinaRes.text();
+  const trimmed  = pageText.slice(0, 6000); // keep under token limit
+
+  const apiKey = getOpenAiKey();
+  if (!apiKey) throw new Error('No API key');
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'system',
+        content: `You extract event info from webpage text. Return ONLY valid JSON with these fields:
+title, date (YYYY-MM-DD or ""), time (HH:MM or ""), city, venue, address, description (1-2 sentences), price, eventUrl, tag (one of: Muzika/Menas/Festivalis/Sportas/Maistas/Kitas).
+If a field is unknown leave it as empty string "". Never add extra text outside JSON.`,
+      }, {
+        role: 'user',
+        content: `Extract event info from this page:\n\nURL: ${url}\n\n${trimmed}`,
+      }],
+      temperature: 0.1,
+    }),
+  });
+  const json = await res.json();
+  const text = json.choices?.[0]?.message?.content || '{}';
+  const clean = text.replace(/```json|```/g, '').trim();
+  return JSON.parse(clean);
+}
+
+function AiUrlModal({ onClose, onExtracted }) {
+  const [url,     setUrl]     = React.useState('');
+  const [apiKey,  setApiKey]  = React.useState(getOpenAiKey());
+  const [loading, setLoading] = React.useState(false);
+  const [error,   setError]   = React.useState('');
+
+  async function handleExtract() {
+    if (!url.trim()) return;
+    if (apiKey.trim()) localStorage.setItem(OPENAI_KEY_STORAGE, apiKey.trim());
+    setLoading(true); setError('');
+    try {
+      const data = await extractEventFromUrl(url.trim());
+      onExtracted({ ...data, eventUrl: data.eventUrl || url.trim(), _isNew: true, status:'published', featured:false });
+    } catch(e) {
+      setError('Nepavyko nuskaityti. Patikrink nuorodą arba OpenAI raktą ir bandyk dar kartą.');
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:100,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}
+      onClick={onClose}>
+      <div style={{ background:'#fff', border:'2px solid #111', padding:'32px',
+        width:'100%', maxWidth:'520px' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ fontFamily:'Space Grotesk', fontWeight:900, fontSize:'18px',
+          textTransform:'uppercase', margin:'0 0 6px' }}>🤖 Pridėk su AI</h3>
+        <p style={{ fontFamily:'monospace', fontSize:'11px', color:'#666', margin:'0 0 20px' }}>
+          Įklijuok renginio nuorodą — AI užpildys viską automatiškai.
+        </p>
+
+        {!getOpenAiKey() && (
+          <div style={{ marginBottom:'14px' }}>
+            <label style={{ fontFamily:'monospace', fontSize:'10px', textTransform:'uppercase',
+              letterSpacing:'0.1em', color:'#666', display:'block', marginBottom:'4px' }}>
+              OpenAI API raktas (išsaugomas tik šiame naršyklėje)
+            </label>
+            <input
+              type="password"
+              placeholder="sk-..."
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              style={{ width:'100%', padding:'10px', border:'1.5px solid #ccc',
+                fontFamily:'monospace', fontSize:'12px', outline:'none', boxSizing:'border-box' }}
+            />
+          </div>
+        )}
+
+        <label style={{ fontFamily:'monospace', fontSize:'10px', textTransform:'uppercase',
+          letterSpacing:'0.1em', color:'#666', display:'block', marginBottom:'4px' }}>
+          Renginio nuoroda
+        </label>
+        <input
+          type="url"
+          placeholder="https://..."
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleExtract()}
+          style={{ width:'100%', padding:'12px', border:'1.5px solid #111',
+            fontFamily:'monospace', fontSize:'13px', marginBottom:'12px',
+            outline:'none', boxSizing:'border-box' }}
+          autoFocus
+        />
+        {error && <p style={{ fontFamily:'monospace', fontSize:'11px', color:'#dc2626', margin:'0 0 10px' }}>{error}</p>}
+        <div style={{ display:'flex', gap:'10px' }}>
+          <button onClick={handleExtract} disabled={loading || !url.trim()}
+            style={{ flex:1, padding:'12px', background:'#7c3aed', color:'#fff',
+              fontFamily:'monospace', fontSize:'11px', fontWeight:700,
+              textTransform:'uppercase', letterSpacing:'0.12em',
+              border:'none', cursor: loading ? 'wait' : 'pointer',
+              opacity: (!url.trim() || loading) ? 0.5 : 1 }}>
+            {loading ? '⏳ Analizuojama...' : '✨ Analizuoti su AI'}
+          </button>
+          <button onClick={onClose}
+            style={{ padding:'12px 20px', background:'transparent',
+              fontFamily:'monospace', fontSize:'11px', fontWeight:700,
+              textTransform:'uppercase', letterSpacing:'0.12em',
+              border:'1.5px solid #111', cursor:'pointer' }}>
+            Atšaukti
+          </button>
+        </div>
+        {getOpenAiKey() && (
+          <p style={{ fontFamily:'monospace', fontSize:'9px', color:'#9ca3af', marginTop:'8px' }}>
+            API raktas išsaugotas. <button onClick={() => { localStorage.removeItem(OPENAI_KEY_STORAGE); setApiKey(''); }}
+              style={{ background:'none', border:'none', color:'#dc2626', cursor:'pointer', fontFamily:'monospace', fontSize:'9px', padding:0 }}>
+              Ištrinti
+            </button>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App() {
-  const [authed,  setAuthed]  = useState(false);
-  const [items,   setItems]   = useState([]);
-  const [photos,  setPhotos]  = useState([]);
-  const [tab,     setTab]     = useState('bread');
-  const [editing, setEditing] = useState(null);
-  const [denying, setDenying] = useState(null);
-  const [toast,   setToast]   = useState(null);
+  const [authed,   setAuthed]  = useState(false);
+  const [items,    setItems]   = useState([]);
+  const [photos,   setPhotos]  = useState([]);
+  const [tab,      setTab]     = useState('bread');
+  const [editing,  setEditing] = useState(null);
+  const [denying,  setDenying] = useState(null);
+  const [toast,    setToast]   = useState(null);
   const [delConfirm, setDelConfirm] = useState(null);
+  const [showAiModal, setShowAiModal] = useState(false);
 
   useEffect(() => {
     if (localStorage.getItem(AUTH_KEY) === 'true') setAuthed(true);
@@ -1049,10 +1183,16 @@ function App() {
             ))}
           </div>
           {tab !== 'photos' && (
-            <button className="btn btn-primary" onClick={handleAddNew}
-              style={{ padding:'10px 20px' }}>
-              + Naujas renginys
-            </button>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button className="btn" onClick={() => setShowAiModal(true)}
+                style={{ padding:'10px 20px', background:'#7c3aed', color:'#fff', border:'none' }}>
+                🤖 Pridėk iš nuorodos
+              </button>
+              <button className="btn btn-primary" onClick={handleAddNew}
+                style={{ padding:'10px 20px' }}>
+                + Naujas renginys
+              </button>
+            </div>
           )}
         </div>
 
@@ -1066,6 +1206,12 @@ function App() {
       </main>
 
       {/* Modals */}
+      {showAiModal && (
+        <AiUrlModal
+          onClose={() => setShowAiModal(false)}
+          onExtracted={data => { setShowAiModal(false); setEditing(data); setTab('published'); }}
+        />
+      )}
       {editing    && <EditModal item={editing} onSave={handleSave} onClose={() => setEditing(null)} />}
       {denying    && <DenyModal item={denying} onConfirm={confirmDeny} onClose={() => setDenying(null)} />}
 
