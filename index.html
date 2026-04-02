@@ -2235,6 +2235,7 @@ function FloatingPhoto({ photo, idx, contained = false }) {
   const isDraggingRef = useRef(false);
   const dragOffset    = useRef({ x:0, y:0 });
   const dragStartPos  = useRef({ x:0, y:0 });
+  const pointerKind   = useRef('mouse');
   const resumeTimer   = useRef(null);
 
   const [pos,      setPos]      = useState(null);   // null = CSS anim, {x,y} = manual
@@ -2252,10 +2253,9 @@ function FloatingPhoto({ photo, idx, contained = false }) {
   const dur   = Math.round(22  + r(4) * 30);    // 22–52 s
   const delay = -parseFloat((r(5) * dur).toFixed(1)); // start mid-flight
 
-  const isMobile = () => window.innerWidth < 640;
-
   function onPointerDown(e) {
     if (e.button !== 0 && e.pointerType !== 'touch') return;
+    pointerKind.current = e.pointerType || 'mouse';
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     if (resumeTimer.current) clearTimeout(resumeTimer.current);
@@ -2270,6 +2270,7 @@ function FloatingPhoto({ photo, idx, contained = false }) {
 
   function onPointerMove(e) {
     if (!isDraggingRef.current) return;
+    if (e.cancelable) e.preventDefault();
     setPos({ x: e.clientX - dragOffset.current.x, y: e.clientY - dragOffset.current.y });
   }
 
@@ -2279,7 +2280,8 @@ function FloatingPhoto({ photo, idx, contained = false }) {
     setDragging(false);
     const dx = Math.abs(e.clientX - dragStartPos.current.x);
     const dy = Math.abs(e.clientY - dragStartPos.current.y);
-    if (dx < 6 && dy < 6) {
+    const tapSlop = pointerKind.current === 'touch' ? 14 : 6;
+    if (dx < tapSlop && dy < tapSlop) {
       /* tap / click → lightbox */
       setPos(null); setZIdx(zBase); setLightbox(true); return;
     }
@@ -2288,10 +2290,20 @@ function FloatingPhoto({ photo, idx, contained = false }) {
     resumeTimer.current = setTimeout(() => { setPos(null); setZIdx(zBase); }, 5000);
   }
 
+  function onPointerCancel() {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    setDragging(false);
+    if (resumeTimer.current) clearTimeout(resumeTimer.current);
+    setPos(null);
+    setZIdx(zBase);
+  }
+
   const base = {
     position: contained ? 'absolute' : 'fixed', width: width + 'px',
     userSelect: 'none', pointerEvents: 'auto',
-    touchAction: isMobile() ? 'auto' : 'none',
+    /* none = finger can drag polaroid; page scroll uses empty areas / section chrome */
+    touchAction: 'none',
     zIndex: zIdx,
   };
 
@@ -2302,7 +2314,7 @@ function FloatingPhoto({ photo, idx, contained = false }) {
     marginLeft: '12px',
     '--fp-rot': `${rot}deg`,
     animation: `floatLeftGPU ${dur}s linear ${delay}s infinite`,
-    cursor: isMobile() ? 'default' : 'grab',
+    cursor: 'grab',
     backfaceVisibility: 'hidden',
   };
 
@@ -2319,9 +2331,10 @@ function FloatingPhoto({ photo, idx, contained = false }) {
   return (
     <>
       <div ref={ref} className="fp-drift" style={pos !== null ? heldStyle : animStyle}
-        onPointerDown={isMobile() ? undefined : onPointerDown}
-        onPointerMove={isMobile() ? undefined : onPointerMove}
-        onPointerUp={isMobile()   ? undefined : onPointerUp}>
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}>
         {/* Polaroid frame */}
         <div style={{
           background: '#fff', padding: '7px 7px 28px', pointerEvents: 'none',
