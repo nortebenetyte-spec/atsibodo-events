@@ -7,9 +7,12 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- API + CDN: browser opens connections early (saves ~100–300ms on first visit) -->
+  <link rel="preconnect" href="https://okaxtapijyxqerkzscyw.supabase.co" crossorigin />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="dns-prefetch" href="https://okaxtapijyxqerkzscyw.supabase.co" />
+  <!-- One hero preload — fewer fights for bandwidth than preloading every image -->
   <link rel="preload" as="image" href="bg.jpg" fetchpriority="high" />
-  <link rel="preload" as="image" href="bread.png" />
-  <link rel="preload" as="image" href="logo-hand.png" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="tailwind-built.css" />
 
