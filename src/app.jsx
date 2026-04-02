@@ -487,7 +487,7 @@ function FallingPattern({ color='rgba(70,70,180,0.13)', bgColor='#eeece5', durat
 /* ══════════════════════════════════════════════════════════════════
    § 7  FEATURED BREAD SECTION
 ══════════════════════════════════════════════════════════════════ */
-function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc, heroLoading }) {
+function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc }) {
   const ref     = useRef(null);
   const visible = useInView(ref, 0.05);
   const isPublished = e => e.approved || e.status === 'published';
@@ -501,7 +501,7 @@ function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc, heroLoading }
 
   return (
     <section id="rekomenduojami" ref={ref} className={isMobile ? 'snap-section' : 'snap-strict'} style={{
-      backgroundImage: "url('bg.png')",
+      backgroundImage: "url('bg.jpg')",
       backgroundSize: 'cover', backgroundPosition: 'center',
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'center',
@@ -525,14 +525,7 @@ function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc, heroLoading }
               display:'block', margin:'0 auto' }} />
         </div>
 
-        {heroLoading ? (
-          <p className={`anim-delay-1 ${visible ? 'anim-fadein' : ''}`}
-             style={{ opacity: visible ? undefined : 0,
-               fontFamily:'monospace', fontSize:'10px', letterSpacing:'0.22em',
-               textTransform:'lowercase', color:'rgba(255,255,255,0.45)', marginTop:'8px' }}>
-            palaukite
-          </p>
-        ) : featured.length === 0 ? (
+        {featured.length === 0 ? (
           <div className={`anim-delay-1 ${visible ? 'anim-fadeup' : ''}`}
                style={{ opacity: visible ? undefined : 0 }}>
             <p style={{ fontFamily:'monospace', fontSize:'13px',
@@ -553,7 +546,7 @@ function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc, heroLoading }
           </div>
         )}
 
-        {!heroLoading && (
+        {featured.length > 0 && (
         <p className={`anim-delay-3 ${visible ? 'anim-fadein' : ''}`}
            style={{ opacity: visible ? undefined : 0,
              fontFamily:'monospace', fontSize:'9px', letterSpacing:'0.28em',
@@ -702,7 +695,7 @@ function EventsListSection({ events }) {
 
   return (
     <section id="renginiai" ref={ref} className="snap-section"
-      style={{ backgroundImage:"url('bg.png')", backgroundSize:'cover', backgroundPosition:'center',
+      style={{ backgroundImage:"url('bg.jpg')", backgroundSize:'cover', backgroundPosition:'center',
         paddingTop:'80px', paddingBottom:'60px' }}>
       <div style={{ maxWidth:'1100px', margin:'0 auto', padding:'0 24px' }}>
 
@@ -2063,7 +2056,7 @@ function FloatingGallery() {
 
   return (
     <section id="albumas" ref={ref} className="snap-strict" style={{
-      backgroundImage:"url('bg.png')", backgroundSize:'cover', backgroundPosition:'center' }}>
+      backgroundImage:"url('bg.jpg')", backgroundSize:'cover', backgroundPosition:'center' }}>
       {/* Floating polaroids — absolute within this section */}
       {photos.map((photo, i) => (
         <FloatingPhoto key={photo.id} photo={photo} idx={i} contained={true} />
@@ -2139,7 +2132,7 @@ function HeroSection({ logoSrc }) {
 
   return (
     <section ref={ref} className="snap-strict" style={{
-      backgroundImage: "url('bg.png')",
+      backgroundImage: "url('bg.jpg')",
       backgroundSize: 'cover', backgroundPosition: 'center',
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
@@ -2271,7 +2264,7 @@ function FloatingEventsSection({ events }) {
 
   return (
     <section id="floating-events" ref={ref} className="snap-strict" style={{
-      backgroundImage:"url('bg.png')", backgroundSize:'cover', backgroundPosition:'center',
+      backgroundImage:"url('bg.jpg')", backgroundSize:'cover', backgroundPosition:'center',
       overflow: 'hidden',
     }}>
       {/* Dark overlay */}
@@ -2338,7 +2331,7 @@ function SubmitSection({ onSubmitEvent }) {
 
   return (
     <section id="pridzek" ref={ref} className="snap-strict" style={{
-      backgroundImage:"url('bg.png')",
+      backgroundImage:"url('bg.jpg')",
       backgroundSize:'cover', backgroundPosition:'center',
       display:'flex', flexDirection:'column',
       alignItems:'center', justifyContent:'center',
@@ -2501,18 +2494,15 @@ async function saveEventToSupa(item) {
 
 function App() {
   const [events,   setEvents]   = useState([]);
-  const [eventsReady, setEventsReady] = useState(false);
   const [breadSrc, setBreadSrc] = useState('bread.png');
   const [logoSrc,  setLogoSrc]  = useState('logo-hand.png');
   const [openEvent, setOpenEvent] = useState(null);
   const [toast,     setToast]     = useState(null);
 
   useEffect(() => {
-    loadPublicEvents()
-      .then(evs => setEvents(evs))
-      .finally(() => setEventsReady(true));
+    loadPublicEvents().then(evs => setEvents(evs));
 
-    /* Static bread/logo PNGs show first; canvas polish in idle time */
+    /* Canvas polish after paint — never block first screen */
     const idle = (fn, timeout = 2000) =>
       (typeof requestIdleCallback !== 'undefined'
         ? requestIdleCallback(fn, { timeout })
@@ -2524,7 +2514,7 @@ function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => {
         loadPublicEvents().then(evs => setEvents(evs));
       });
-    const subTimer = setTimeout(() => { channel.subscribe(); }, 0);
+    const subTimer = setTimeout(() => { channel.subscribe(); }, 4000);
     return () => {
       clearTimeout(subTimer);
       supa.removeChannel(channel);
@@ -2563,8 +2553,7 @@ function App() {
 
       {/* ── Scroll-snap page ────────────────────────── */}
       {/* Section 1: Bread — promoted events (first thing you see) */}
-      <FeaturedBreadSection events={publishedEvents} breadSrc={breadSrc} onOpen={setOpenEvent} logoSrc={logoSrc}
-        heroLoading={!eventsReady} />
+      <FeaturedBreadSection events={publishedEvents} breadSrc={breadSrc} onOpen={setOpenEvent} logoSrc={logoSrc} />
 
 
       {/* Section 3: Events list + city filter */}
