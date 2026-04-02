@@ -487,7 +487,7 @@ function FallingPattern({ color='rgba(70,70,180,0.13)', bgColor='#eeece5', durat
 /* ══════════════════════════════════════════════════════════════════
    § 7  FEATURED BREAD SECTION
 ══════════════════════════════════════════════════════════════════ */
-function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc }) {
+function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc, eventsLoaded }) {
   const ref     = useRef(null);
   const visible = useInView(ref, 0.05);
   const isPublished = e => e.approved || e.status === 'published';
@@ -525,7 +525,14 @@ function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc }) {
               display:'block', margin:'0 auto' }} />
         </div>
 
-        {featured.length === 0 ? (
+        {!eventsLoaded ? (
+          <p className={`anim-delay-1 ${visible ? 'anim-fadein' : ''}`}
+             style={{ opacity: visible ? undefined : 0,
+               fontFamily:'monospace', fontSize:'10px', letterSpacing:'0.22em',
+               textTransform:'lowercase', color:'rgba(255,255,255,0.45)', marginTop:'8px' }}>
+            palaukite
+          </p>
+        ) : featured.length === 0 ? (
           <div className={`anim-delay-1 ${visible ? 'anim-fadeup' : ''}`}
                style={{ opacity: visible ? undefined : 0 }}>
             <p style={{ fontFamily:'monospace', fontSize:'13px',
@@ -546,7 +553,7 @@ function FeaturedBreadSection({ events, breadSrc, onOpen, logoSrc }) {
           </div>
         )}
 
-        {featured.length > 0 && (
+        {eventsLoaded && featured.length > 0 && (
         <p className={`anim-delay-3 ${visible ? 'anim-fadein' : ''}`}
            style={{ opacity: visible ? undefined : 0,
              fontFamily:'monospace', fontSize:'9px', letterSpacing:'0.28em',
@@ -658,7 +665,7 @@ function EventListItem({ event }) {
 /* ══════════════════════════════════════════════════════════════════
    § 9  EVENTS LIST SECTION  (all approved events)
 ══════════════════════════════════════════════════════════════════ */
-function EventsListSection({ events }) {
+function EventsListSection({ events, eventsLoaded }) {
   const ref        = useRef(null);
   const scrollRef  = useRef(null);
   const visible    = useInView(ref, 0.05);
@@ -755,8 +762,13 @@ function EventsListSection({ events }) {
 
         {/* Cards horizontal scroll */}
         {filtered.length === 0
-          ? <p style={{ fontFamily:'monospace', fontSize:'13px', color:'rgba(255,255,255,0.5)',
-              textAlign:'center', padding:'48px 0' }}>Nėra renginių.</p>
+          ? <p style={{ fontFamily:'monospace', fontSize: eventsLoaded ? '13px' : '10px',
+              letterSpacing: eventsLoaded ? '0.15em' : '0.22em',
+              textTransform: eventsLoaded ? 'none' : 'lowercase',
+              color:'rgba(255,255,255,0.5)',
+              textAlign:'center', padding:'48px 0' }}>
+              {eventsLoaded ? 'Nėra renginių.' : 'palaukite'}
+            </p>
           : <div ref={scrollRef} className="cards-scroll" style={{
               display:'flex', flexDirection:'row', gap:'20px',
               overflowX:'auto', overflowY:'visible',
@@ -2494,13 +2506,16 @@ async function saveEventToSupa(item) {
 
 function App() {
   const [events,   setEvents]   = useState([]);
+  const [eventsLoaded, setEventsLoaded] = useState(false);
   const [breadSrc, setBreadSrc] = useState('bread.png');
   const [logoSrc,  setLogoSrc]  = useState('logo-hand.png');
   const [openEvent, setOpenEvent] = useState(null);
   const [toast,     setToast]     = useState(null);
 
   useEffect(() => {
-    loadPublicEvents().then(evs => setEvents(evs));
+    loadPublicEvents()
+      .then(evs => setEvents(evs))
+      .finally(() => setEventsLoaded(true));
 
     /* Canvas polish after paint — never block first screen */
     const idle = (fn, timeout = 2000) =>
@@ -2553,11 +2568,12 @@ function App() {
 
       {/* ── Scroll-snap page ────────────────────────── */}
       {/* Section 1: Bread — promoted events (first thing you see) */}
-      <FeaturedBreadSection events={publishedEvents} breadSrc={breadSrc} onOpen={setOpenEvent} logoSrc={logoSrc} />
+      <FeaturedBreadSection events={publishedEvents} breadSrc={breadSrc} onOpen={setOpenEvent} logoSrc={logoSrc}
+        eventsLoaded={eventsLoaded} />
 
 
       {/* Section 3: Events list + city filter */}
-      <EventsListSection events={publishedEvents} />
+      <EventsListSection events={publishedEvents} eventsLoaded={eventsLoaded} />
 
       {/* Section 4: Community photo gallery */}
       <FloatingGallery />
