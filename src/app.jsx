@@ -2444,7 +2444,7 @@ function Footer() {
 /* ── Supabase client ── */
 const SUPA_URL = 'https://okaxtapijyxqerkzscyw.supabase.co';
 const SUPA_KEY = 'sb_publishable_rrtmucOsKRdZSnNoNEbbuw_ls_IRjaL';
-const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+const supa = globalThis.supabase.createClient(SUPA_URL, SUPA_KEY);
 
 function isPastEvent(item) {
   const d = item.date || item.extractedDate;
